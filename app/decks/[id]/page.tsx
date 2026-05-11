@@ -25,7 +25,40 @@ interface JoinedDeckCard {
     type: string | null;
     image_url: string | null;
     game: Game;
+    raw: unknown;
   } | null;
+}
+
+interface YgoBanlistInfo {
+  ban_tcg?: string;
+  ban_ocg?: string;
+}
+
+function ygoMaxCopies(banlistInfo: YgoBanlistInfo | null | undefined): number {
+  const tag = banlistInfo?.ban_tcg;
+  if (!tag) return 3;
+  if (tag === "Banned") return 0;
+  if (tag === "Limited") return 1;
+  if (tag === "Semi-Limited") return 2;
+  return 3;
+}
+
+function ygoViolation(
+  inDeck: number,
+  banlistInfo: YgoBanlistInfo | null | undefined,
+): string | null {
+  const max = ygoMaxCopies(banlistInfo);
+  if (inDeck <= max) return null;
+  switch (banlistInfo?.ban_tcg) {
+    case "Banned":
+      return "Banned in TCG";
+    case "Limited":
+      return "Limited to 1 in TCG";
+    case "Semi-Limited":
+      return "Semi-Limited to 2 in TCG";
+    default:
+      return "Max 3 copies per deck";
+  }
 }
 
 export default async function DeckEditorPage({
@@ -47,7 +80,7 @@ export default async function DeckEditorPage({
   const { data: rawDeckCards } = await supabase
     .from("deck_cards")
     .select(
-      "quantity, board, card:cards!inner(id, external_id, name, type, image_url, game)",
+      "quantity, board, card:cards!inner(id, external_id, name, type, image_url, game, raw)",
     )
     .eq("deck_id", deck.id);
   const deckCards = (rawDeckCards ?? []) as unknown as JoinedDeckCard[];
@@ -73,6 +106,11 @@ export default async function DeckEditorPage({
   function toDisplay(dc: JoinedDeckCard): DeckCardDisplay | null {
     if (!dc.card) return null;
     const c = dc.card;
+    const banlist =
+      c.game === "YGO"
+        ? ((c.raw as { banlist_info?: YgoBanlistInfo } | null)?.banlist_info ??
+          null)
+        : null;
     return {
       cardId: c.id,
       externalId: c.external_id,
@@ -82,6 +120,7 @@ export default async function DeckEditorPage({
       image_url: c.image_url,
       inDeck: dc.quantity,
       owned: ownedByCard.get(c.id) ?? 0,
+      violation: c.game === "YGO" ? ygoViolation(dc.quantity, banlist) : null,
     };
   }
 

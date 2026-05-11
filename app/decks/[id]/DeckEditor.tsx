@@ -17,7 +17,19 @@ export interface DeckCardDisplay {
   image_url: string | null;
   inDeck: number;
   owned: number;
+  /** Human-readable reason this row violates a deck-building rule, or null if legal. */
+  violation: string | null;
 }
+
+interface BoardBounds {
+  min: number;
+  max: number;
+}
+
+const YGO_BOUNDS: { main: BoardBounds; extra: BoardBounds } = {
+  main: { min: 40, max: 60 },
+  extra: { min: 0, max: 15 },
+};
 
 type Mode = "owned" | "all";
 
@@ -199,6 +211,7 @@ export function DeckEditor({
         cards={mainCards}
         busy={busy}
         onAdjust={adjust}
+        bounds={deckGame === "YGO" ? YGO_BOUNDS.main : null}
       />
       {deckGame === "YGO" ? (
         <BoardSection
@@ -206,6 +219,7 @@ export function DeckEditor({
           cards={extraCards}
           busy={busy}
           onAdjust={adjust}
+          bounds={YGO_BOUNDS.extra}
           emptyHint="Fusion / Synchro / Xyz / Link monsters land here automatically."
         />
       ) : null}
@@ -218,12 +232,14 @@ function BoardSection({
   cards,
   busy,
   onAdjust,
+  bounds,
   emptyHint = "No cards yet. Use the search above to add.",
 }: {
   title: string;
   cards: DeckCardDisplay[];
   busy: Record<string, "add" | "sub">;
   onAdjust: (externalId: string, sign: 1 | -1) => void;
+  bounds: BoardBounds | null;
   emptyHint?: string;
 }) {
   const totalCards = cards.reduce((s, c) => s + c.inDeck, 0);
@@ -231,13 +247,22 @@ function BoardSection({
     (s, c) => s + Math.max(0, c.inDeck - c.owned),
     0,
   );
+  const outOfBounds =
+    bounds !== null && (totalCards < bounds.min || totalCards > bounds.max);
 
   return (
     <section className="mb-4 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="text-xs text-zinc-500">
-          {totalCards} card{totalCards === 1 ? "" : "s"}
+          <span
+            className={
+              outOfBounds ? "text-red-600 dark:text-red-400" : undefined
+            }
+          >
+            {totalCards} card{totalCards === 1 ? "" : "s"}
+            {bounds ? ` · need ${bounds.min}–${bounds.max}` : null}
+          </span>
           {missingTotal > 0 ? (
             <>
               {" · "}
@@ -258,10 +283,16 @@ function BoardSection({
           {cards.map((dc) => {
             const missing = Math.max(0, dc.inDeck - dc.owned);
             const inFlight = !!busy[dc.externalId];
+            const hasViolation = !!dc.violation;
             return (
               <li
                 key={dc.cardId}
-                className="flex items-center gap-3 rounded-md border border-zinc-200 p-2 dark:border-zinc-800"
+                className={
+                  "flex items-center gap-3 rounded-md border p-2 " +
+                  (hasViolation
+                    ? "border-red-500/50 bg-red-500/5"
+                    : "border-zinc-200 dark:border-zinc-800")
+                }
               >
                 <Link
                   href={`/cards/${dc.game}/${encodeURIComponent(dc.externalId)}`}
@@ -289,6 +320,11 @@ function BoardSection({
                         </span>
                       ) : null}
                     </p>
+                    {dc.violation ? (
+                      <p className="truncate text-xs font-medium text-red-600 dark:text-red-400">
+                        {dc.violation}
+                      </p>
+                    ) : null}
                   </div>
                 </Link>
                 <div className="flex shrink-0 items-center gap-1">

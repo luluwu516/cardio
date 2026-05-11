@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
+import { SearchInput } from "@/components/SearchInput";
 import { applyDelta } from "./actions";
 
 const GAMES: Game[] = ["YGO", "MTG"];
@@ -147,15 +148,15 @@ export default function SearchPage() {
         ))}
       </div>
 
-      <input
+      <SearchInput
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={setQuery}
         placeholder={
           game === "MTG"
             ? "Search MTG (e.g. Black Lotus)"
             : "Search YGO (e.g. Blue-Eyes White Dragon)"
         }
-        className="mb-4 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-base outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
+        className="mb-4"
       />
 
       {error ? (

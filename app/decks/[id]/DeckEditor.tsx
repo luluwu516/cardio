@@ -1,0 +1,322 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
+
+import type { Game, SearchHit } from "@/lib/cards/types";
+import { SearchInput } from "@/components/SearchInput";
+import { changeDeckCardQuantity } from "../actions";
+
+export interface DeckCardDisplay {
+  cardId: string;
+  externalId: string;
+  game: Game;
+  name: string;
+  type: string | null;
+  image_url: string | null;
+  inDeck: number;
+  owned: number;
+}
+
+type Mode = "owned" | "all";
+
+export function DeckEditor({
+  deckId,
+  deckGame,
+  mainCards,
+  extraCards,
+}: {
+  deckId: string;
+  deckGame: Game;
+  mainCards: DeckCardDisplay[];
+  extraCards: DeckCardDisplay[];
+}) {
+  const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<Mode>("owned");
+  const [results, setResults] = useState<SearchHit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Record<string, "add" | "sub">>({});
+  const [, startTransition] = useTransition();
+
+  const trimmed = query.trim();
+  const isValid = trimmed.length >= 2;
+  const display = isValid ? results : [];
+
+  useEffect(() => {
+    if (!isValid) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const url =
+          mode === "owned"
+            ? `/api/collection/search?game=${deckGame}&q=${encodeURIComponent(trimmed)}`
+            : `/api/search/${deckGame}?q=${encodeURIComponent(trimmed)}`;
+        const res = await fetch(url, { signal: ctrl.signal });
+        const data = (await res.json()) as
+          | { results: SearchHit[] }
+          | { error: string };
+        if ("error" in data) {
+          setError(data.error);
+          setResults([]);
+        } else {
+          setResults(data.results);
+        }
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") {
+          setError((e as Error).message);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [trimmed, mode, deckGame, isValid]);
+
+  function adjust(externalId: string, sign: 1 | -1) {
+    const key = externalId;
+    if (busy[key]) return;
+    setBusy((b) => ({ ...b, [key]: sign > 0 ? "add" : "sub" }));
+    startTransition(async () => {
+      try {
+        await changeDeckCardQuantity(deckId, deckGame, externalId, sign);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy((b) => {
+          const next = { ...b };
+          delete next[key];
+          return next;
+        });
+      }
+    });
+  }
+
+  return (
+    <>
+      <section className="mb-5">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search cards to add"
+          className="mb-2"
+        />
+        <div className="mb-2 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
+          {(["owned", "all"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={
+                "rounded px-3 py-1 text-xs font-medium transition-colors " +
+                (mode === m
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-black"
+                  : "text-zinc-700 dark:text-zinc-300")
+              }
+            >
+              {m === "owned" ? "From collection" : "All cards"}
+            </button>
+          ))}
+        </div>
+
+        {error ? (
+          <p className="mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
+
+        {loading ? (
+          <p className="text-sm text-zinc-500">Searching…</p>
+        ) : isValid && display.length === 0 ? (
+          mode === "owned" ? (
+            <p className="text-sm text-zinc-500">
+              No matches in your collection.{" "}
+              <button
+                onClick={() => setMode("all")}
+                className="underline hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Search outside collection?
+              </button>
+            </p>
+          ) : (
+            <p className="text-sm text-zinc-500">No results.</p>
+          )
+        ) : null}
+
+        <ul className="space-y-2">
+          {display.map((hit) => {
+            const key = hit.external_id;
+            const isAdding = busy[key] === "add";
+            return (
+              <li
+                key={`${hit.game}:${key}`}
+                className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <Link
+                  href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
+                  className="flex min-w-0 flex-1 items-center gap-3"
+                >
+                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                    {hit.image_url ? (
+                      <Image
+                        src={hit.image_url}
+                        alt={hit.name}
+                        fill
+                        sizes="48px"
+                        className="object-cover"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{hit.name}</p>
+                    <p className="truncate text-xs text-zinc-500">
+                      {hit.type || "—"}
+                      {hit.owned > 0 ? ` · owned ${hit.owned}` : ""}
+                    </p>
+                  </div>
+                </Link>
+                <button
+                  onClick={() => adjust(hit.external_id, +1)}
+                  disabled={!!busy[key]}
+                  aria-label="Add to deck"
+                  className="h-8 w-10 shrink-0 rounded-md border border-zinc-300 text-sm font-medium hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  {isAdding ? "…" : "+"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <BoardSection
+        title="Main"
+        cards={mainCards}
+        busy={busy}
+        onAdjust={adjust}
+      />
+      {deckGame === "YGO" ? (
+        <BoardSection
+          title="Extra"
+          cards={extraCards}
+          busy={busy}
+          onAdjust={adjust}
+          emptyHint="Fusion / Synchro / Xyz / Link monsters land here automatically."
+        />
+      ) : null}
+    </>
+  );
+}
+
+function BoardSection({
+  title,
+  cards,
+  busy,
+  onAdjust,
+  emptyHint = "No cards yet. Use the search above to add.",
+}: {
+  title: string;
+  cards: DeckCardDisplay[];
+  busy: Record<string, "add" | "sub">;
+  onAdjust: (externalId: string, sign: 1 | -1) => void;
+  emptyHint?: string;
+}) {
+  const totalCards = cards.reduce((s, c) => s + c.inDeck, 0);
+  const missingTotal = cards.reduce(
+    (s, c) => s + Math.max(0, c.inDeck - c.owned),
+    0,
+  );
+
+  return (
+    <section className="mb-4 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <span className="text-xs text-zinc-500">
+          {totalCards} card{totalCards === 1 ? "" : "s"}
+          {missingTotal > 0 ? (
+            <>
+              {" · "}
+              <span className="text-red-600 dark:text-red-400">
+                missing {missingTotal}
+              </span>
+            </>
+          ) : null}
+        </span>
+      </div>
+
+      {cards.length === 0 ? (
+        <p className="rounded-md border border-dashed border-zinc-300 p-4 text-center text-xs text-zinc-500 dark:border-zinc-700">
+          {emptyHint}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {cards.map((dc) => {
+            const missing = Math.max(0, dc.inDeck - dc.owned);
+            const inFlight = !!busy[dc.externalId];
+            return (
+              <li
+                key={dc.cardId}
+                className="flex items-center gap-3 rounded-md border border-zinc-200 p-2 dark:border-zinc-800"
+              >
+                <Link
+                  href={`/cards/${dc.game}/${encodeURIComponent(dc.externalId)}`}
+                  className="flex min-w-0 flex-1 items-center gap-3"
+                >
+                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                    {dc.image_url ? (
+                      <Image
+                        src={dc.image_url}
+                        alt={dc.name}
+                        fill
+                        sizes="48px"
+                        className="object-cover"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{dc.name}</p>
+                    <p className="truncate text-xs text-zinc-500">
+                      in {dc.inDeck} · owned {dc.owned}
+                      {missing > 0 ? (
+                        <span className="text-red-600 dark:text-red-400">
+                          {" "}
+                          · need {missing}
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                </Link>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => onAdjust(dc.externalId, -1)}
+                    disabled={inFlight}
+                    aria-label="Decrease"
+                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    −
+                  </button>
+                  <span className="w-6 text-center text-sm font-medium tabular-nums">
+                    {dc.inDeck}
+                  </span>
+                  <button
+                    onClick={() => onAdjust(dc.externalId, +1)}
+                    disabled={inFlight}
+                    aria-label="Increase"
+                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    +
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}

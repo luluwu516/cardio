@@ -2,15 +2,30 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { BackButton } from "@/components/BackButton";
+import type { Game } from "@/lib/cards/types";
 import { deleteDeck, renameDeck } from "../actions";
+import { DeckEditor, type DeckCardDisplay } from "./DeckEditor";
 
 interface Deck {
   id: string;
   name: string;
-  game: "YGO" | "MTG";
+  game: Game;
   format: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface JoinedDeckCard {
+  quantity: number;
+  board: string;
+  card: {
+    id: string;
+    external_id: string;
+    name: string;
+    type: string | null;
+    image_url: string | null;
+    game: Game;
+  } | null;
 }
 
 export default async function DeckEditorPage({
@@ -20,14 +35,67 @@ export default async function DeckEditorPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data } = await supabase
+
+  const { data: deckRow } = await supabase
     .from("decks")
     .select("id, name, game, format, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
+  if (!deckRow) notFound();
+  const deck = deckRow as Deck;
 
-  if (!data) notFound();
-  const deck = data as Deck;
+  const { data: rawDeckCards } = await supabase
+    .from("deck_cards")
+    .select(
+      "quantity, board, card:cards!inner(id, external_id, name, type, image_url, game)",
+    )
+    .eq("deck_id", deck.id);
+  const deckCards = (rawDeckCards ?? []) as unknown as JoinedDeckCard[];
+
+  const cardIds = deckCards
+    .map((dc) => dc.card?.id)
+    .filter((x): x is string => !!x);
+
+  const ownedByCard = new Map<string, number>();
+  if (cardIds.length > 0) {
+    const { data: owned } = await supabase
+      .from("user_cards")
+      .select("card_id, quantity")
+      .in("card_id", cardIds);
+    for (const row of owned ?? []) {
+      ownedByCard.set(
+        row.card_id,
+        (ownedByCard.get(row.card_id) ?? 0) + row.quantity,
+      );
+    }
+  }
+
+  function toDisplay(dc: JoinedDeckCard): DeckCardDisplay | null {
+    if (!dc.card) return null;
+    const c = dc.card;
+    return {
+      cardId: c.id,
+      externalId: c.external_id,
+      game: c.game,
+      name: c.name,
+      type: c.type,
+      image_url: c.image_url,
+      inDeck: dc.quantity,
+      owned: ownedByCard.get(c.id) ?? 0,
+    };
+  }
+
+  const mainCards: DeckCardDisplay[] = deckCards
+    .filter((dc) => dc.board === "main")
+    .map(toDisplay)
+    .filter((x): x is DeckCardDisplay => !!x)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const extraCards: DeckCardDisplay[] = deckCards
+    .filter((dc) => dc.board === "extra")
+    .map(toDisplay)
+    .filter((x): x is DeckCardDisplay => !!x)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
@@ -35,7 +103,7 @@ export default async function DeckEditorPage({
         <BackButton fallback="/decks" />
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-5 flex items-center gap-2">
         <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
           {deck.game}
         </span>
@@ -54,15 +122,12 @@ export default async function DeckEditorPage({
         </form>
       </div>
 
-      <section className="mb-4 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold">Main</h2>
-          <span className="text-xs text-zinc-500">0 cards</span>
-        </div>
-        <p className="rounded-md border border-dashed border-zinc-300 p-4 text-center text-xs text-zinc-500 dark:border-zinc-700">
-          Card adding lands in Sprint 5.2.
-        </p>
-      </section>
+      <DeckEditor
+        deckId={deck.id}
+        deckGame={deck.game}
+        mainCards={mainCards}
+        extraCards={extraCards}
+      />
 
       <form
         action={deleteDeck}

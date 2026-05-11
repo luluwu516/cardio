@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { SearchInput } from "@/components/SearchInput";
 import { changeQuantity, removeFromCollection } from "./actions";
 
 export interface CollectionRow {
@@ -42,11 +43,10 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
   return (
     <>
       <div className="mb-3 space-y-2">
-        <input
+        <SearchInput
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
           placeholder="Search your collection by name"
-          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-base outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
         />
         <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
           {FILTERS.map((f) => (

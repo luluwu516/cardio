@@ -203,8 +203,8 @@ export default function SearchPage() {
                   )}
                 </div>
                 <div className="space-y-1 px-2 pt-2">
-                  <p className="line-clamp-2 text-sm font-medium">{hit.name}</p>
-                  <p className="line-clamp-1 text-xs text-zinc-500">{hit.type}</p>
+                  <p className="truncate text-sm font-medium">{hit.name}</p>
+                  <p className="truncate text-xs text-zinc-500">{hit.type}</p>
                 </div>
               </Link>
 

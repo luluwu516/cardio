@@ -36,6 +36,7 @@ export async function changeQuantity(formData: FormData) {
     await supabase.from("user_cards").update({ quantity: next }).eq("id", id);
   }
   revalidatePath("/collection");
+  revalidatePath("/cards", "layout");
 }
 
 export async function removeFromCollection(formData: FormData) {
@@ -48,4 +49,5 @@ export async function removeFromCollection(formData: FormData) {
     .eq("id", id)
     .eq("user_id", user.id);
   revalidatePath("/collection");
+  revalidatePath("/cards", "layout");
 }

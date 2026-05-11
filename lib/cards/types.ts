@@ -10,4 +10,6 @@ export interface SearchHit {
   name: string;
   type: string;
   image_url: string | null;
+  /** Total quantity the current user already owns across all variants. */
+  owned: number;
 }

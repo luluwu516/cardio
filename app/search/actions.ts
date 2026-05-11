@@ -93,3 +93,32 @@ export async function removeOneFromCollection(
 ) {
   await applyDelta(game, externalId, -1);
 }
+
+/** Hard remove: deletes every user_cards row for this card, all variants. */
+export async function removeAllFromCollection(
+  game: Game,
+  externalId: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: card } = await supabase
+    .from("cards")
+    .select("id")
+    .eq("game", game)
+    .eq("external_id", externalId)
+    .maybeSingle();
+  if (!card) return;
+
+  await supabase
+    .from("user_cards")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("card_id", card.id);
+
+  revalidatePath("/collection");
+  revalidatePath("/cards", "layout");
+}

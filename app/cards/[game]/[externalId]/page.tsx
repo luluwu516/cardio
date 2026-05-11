@@ -7,12 +7,9 @@ import { getYgoById, ygoImage } from "@/lib/cards/ygoprodeck";
 import type { Game } from "@/lib/cards/types";
 import {
   addToCollection,
+  removeAllFromCollection,
   removeOneFromCollection,
 } from "@/app/search/actions";
-import {
-  changeQuantity,
-  removeFromCollection,
-} from "@/app/collection/actions";
 import { BackButton } from "@/components/BackButton";
 import { InlineSymbols } from "@/components/ManaSymbols";
 
@@ -128,10 +125,7 @@ async function loadFromExternal(
 }
 
 interface OwnedRow {
-  id: string;
   quantity: number;
-  condition: string;
-  foil: boolean;
 }
 
 export default async function CardDetailPage({
@@ -162,7 +156,7 @@ export default async function CardDetailPage({
   if (cardRow) {
     const { data } = await supabase
       .from("user_cards")
-      .select("id, quantity, condition, foil")
+      .select("quantity")
       .eq("card_id", cardRow.id);
     owned = (data ?? []) as OwnedRow[];
   }
@@ -170,6 +164,7 @@ export default async function CardDetailPage({
 
   const addAction = addToCollection.bind(null, game, externalId);
   const removeOneAction = removeOneFromCollection.bind(null, game, externalId);
+  const removeAllAction = removeAllFromCollection.bind(null, game, externalId);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
@@ -259,81 +254,46 @@ export default async function CardDetailPage({
 
       <section className="mt-5 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">In collection</p>
-            <p className="text-xs text-zinc-500">
-              {ownedTotal === 0
-                ? "You don't own this card yet."
-                : `${ownedTotal} owned across ${owned.length} variant${owned.length === 1 ? "" : "s"}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {ownedTotal > 0 ? (
-              <form action={removeOneAction}>
-                <button className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
-                  Remove one
-                </button>
-              </form>
-            ) : null}
+          <p className="text-sm font-medium">
+            {ownedTotal === 0
+              ? "Not in collection"
+              : `In collection · ${ownedTotal}`}
+          </p>
+          {ownedTotal === 0 ? (
             <form action={addAction}>
               <button className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">
                 Add
               </button>
             </form>
-          </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <form action={removeOneAction}>
+                <button
+                  aria-label="Decrease"
+                  className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  −
+                </button>
+              </form>
+              <span className="w-6 text-center text-sm font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                {ownedTotal}
+              </span>
+              <form action={addAction}>
+                <button
+                  aria-label="Increase"
+                  className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  +
+                </button>
+              </form>
+              <form action={removeAllAction} className="ml-1">
+                <button className="h-8 rounded-md border border-zinc-300 px-3 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
+                  Remove
+                </button>
+              </form>
+            </div>
+          )}
         </div>
-
-        {owned.length > 0 ? (
-          <ul className="mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-            {owned.map((row) => (
-              <li
-                key={row.id}
-                className="flex items-center justify-between gap-2"
-              >
-                <div className="text-sm">
-                  <span className="font-medium">{row.condition}</span>
-                  {row.foil ? (
-                    <span className="ml-1 text-xs text-zinc-500">foil</span>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-1">
-                  <form action={changeQuantity}>
-                    <input type="hidden" name="id" value={row.id} />
-                    <input type="hidden" name="delta" value="-1" />
-                    <button
-                      aria-label="Decrease"
-                      className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                    >
-                      −
-                    </button>
-                  </form>
-                  <span className="w-6 text-center text-sm font-medium tabular-nums">
-                    {row.quantity}
-                  </span>
-                  <form action={changeQuantity}>
-                    <input type="hidden" name="id" value={row.id} />
-                    <input type="hidden" name="delta" value="1" />
-                    <button
-                      aria-label="Increase"
-                      className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                    >
-                      +
-                    </button>
-                  </form>
-                  <form action={removeFromCollection} className="ml-1">
-                    <input type="hidden" name="id" value={row.id} />
-                    <button
-                      aria-label="Remove"
-                      className="h-8 rounded-md border border-zinc-300 px-2 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                    >
-                      Remove
-                    </button>
-                  </form>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </section>
 
       {detail.tcgplayer_url ? (

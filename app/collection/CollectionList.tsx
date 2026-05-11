@@ -23,18 +23,18 @@ export interface CollectionRow {
   } | null;
 }
 
-type GameFilter = "All" | "YGO" | "MTG";
-const FILTERS: GameFilter[] = ["All", "YGO", "MTG"];
+type GameFilter = "YGO" | "MTG";
+const FILTERS: GameFilter[] = ["YGO", "MTG"];
 
 export function CollectionList({ rows }: { rows: CollectionRow[] }) {
   const [query, setQuery] = useState("");
-  const [gameFilter, setGameFilter] = useState<GameFilter>("All");
+  const [gameFilter, setGameFilter] = useState<GameFilter>("YGO");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       if (!row.card) return false;
-      if (gameFilter !== "All" && row.card.game !== gameFilter) return false;
+      if (row.card.game !== gameFilter) return false;
       if (q && !row.card.name.toLowerCase().includes(q)) return false;
       return true;
     });

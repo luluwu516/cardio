@@ -19,6 +19,8 @@ export interface DeckCardDisplay {
   owned: number;
   /** Human-readable reason this row violates a deck-building rule, or null if legal. */
   violation: string | null;
+  estPriceUsd: number | null;
+  tcgplayerUrl: string | null;
 }
 
 interface BoardBounds {
@@ -33,13 +35,91 @@ const YGO_BOUNDS: { main: BoardBounds; extra: BoardBounds } = {
 
 type Mode = "owned" | "all";
 
+function csvEscape(value: string | number): string {
+  const s = String(value);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function safeFilename(name: string): string {
+  return (
+    name
+      .normalize("NFKD")
+      .replace(/[^A-Za-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "deck"
+  );
+}
+
+function ymd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+
+interface MissingRow {
+  game: Game;
+  name: string;
+  needed: number;
+  estPriceUsd: number | null;
+  tcgplayerUrl: string | null;
+}
+
+function buildMissingCsv(rows: MissingRow[]): { csv: string; total: number } {
+  const header = [
+    "game",
+    "card_name",
+    "quantity_needed",
+    "set",
+    "condition_pref",
+    "tcgplayer_url",
+    "est_price_usd",
+    "est_subtotal_usd",
+  ].join(",");
+  const lines: string[] = [header];
+  let total = 0;
+  for (const r of rows) {
+    const subtotal =
+      r.estPriceUsd !== null ? r.estPriceUsd * r.needed : null;
+    if (subtotal !== null) total += subtotal;
+    lines.push(
+      [
+        r.game,
+        csvEscape(r.name),
+        r.needed,
+        "",
+        "NM",
+        csvEscape(r.tcgplayerUrl ?? ""),
+        r.estPriceUsd !== null ? r.estPriceUsd.toFixed(2) : "",
+        subtotal !== null ? subtotal.toFixed(2) : "",
+      ].join(","),
+    );
+  }
+  lines.push(
+    ["", "TOTAL", "", "", "", "", "", total.toFixed(2)].join(","),
+  );
+  return { csv: lines.join("\n"), total };
+}
+
+function downloadBlob(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function DeckEditor({
   deckId,
+  deckName,
   deckGame,
   mainCards,
   extraCards,
 }: {
   deckId: string;
+  deckName: string;
   deckGame: Game;
   mainCards: DeckCardDisplay[];
   extraCards: DeckCardDisplay[];
@@ -55,6 +135,30 @@ export function DeckEditor({
   const trimmed = query.trim();
   const isValid = trimmed.length >= 2;
   const display = isValid ? results : [];
+
+  const missingRows: MissingRow[] = [...mainCards, ...extraCards]
+    .map((c) => {
+      const needed = Math.max(0, c.inDeck - c.owned);
+      if (needed === 0) return null;
+      return {
+        game: c.game,
+        name: c.name,
+        needed,
+        estPriceUsd: c.estPriceUsd,
+        tcgplayerUrl: c.tcgplayerUrl,
+      };
+    })
+    .filter((x): x is MissingRow => !!x);
+  const estTotal = missingRows.reduce(
+    (s, r) => s + (r.estPriceUsd ?? 0) * r.needed,
+    0,
+  );
+
+  function handleExport() {
+    const { csv } = buildMissingCsv(missingRows);
+    const filename = `cardio-buylist-${safeFilename(deckName)}-${ymd(new Date())}.csv`;
+    downloadBlob(csv, filename, "text/csv;charset=utf-8");
+  }
 
   useEffect(() => {
     if (!isValid) return;
@@ -112,6 +216,26 @@ export function DeckEditor({
 
   return (
     <>
+      {missingRows.length > 0 ? (
+        <div className="mb-4 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Missing from collection</p>
+              <p className="text-xs text-zinc-500">
+                {missingRows.length} card{missingRows.length === 1 ? "" : "s"}
+                {estTotal > 0 ? ` · ~$${estTotal.toFixed(2)} TCGPlayer` : ""}
+              </p>
+            </div>
+            <button
+              onClick={handleExport}
+              className="shrink-0 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+            >
+              Export buylist
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <section className="mb-5">
         <SearchInput
           value={query}
@@ -261,7 +385,6 @@ function BoardSection({
             }
           >
             {totalCards} card{totalCards === 1 ? "" : "s"}
-            {bounds ? ` · need ${bounds.min}–${bounds.max}` : null}
           </span>
           {missingTotal > 0 ? (
             <>

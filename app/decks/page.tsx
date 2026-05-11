@@ -1,24 +1,15 @@
-import Link from "next/link";
-
 import { createClient } from "@/lib/supabase/server";
 import { createDeck } from "./actions";
-
-interface DeckRow {
-  id: string;
-  name: string;
-  game: "YGO" | "MTG";
-  updated_at: string;
-  created_at: string;
-}
+import { DecksList, type DeckListRow } from "./DecksList";
 
 export default async function DecksPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("decks")
-    .select("id, name, game, updated_at, created_at")
+    .select("id, name, game, updated_at")
     .order("updated_at", { ascending: false });
 
-  const decks = (data ?? []) as DeckRow[];
+  const decks = (data ?? []) as DeckListRow[];
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
@@ -62,29 +53,7 @@ export default async function DecksPage() {
           No decks yet — create your first deck above.
         </p>
       ) : (
-        <ul className="space-y-2">
-          {decks.map((d) => (
-            <li
-              key={d.id}
-              className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-            >
-              <Link
-                href={`/decks/${d.id}`}
-                className="flex items-center justify-between gap-2 p-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{d.name}</p>
-                  <p className="text-xs text-zinc-500">
-                    Updated {new Date(d.updated_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                  {d.game}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <DecksList decks={decks} />
       )}
     </main>
   );

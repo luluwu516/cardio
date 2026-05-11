@@ -29,29 +29,25 @@ interface JoinedDeckCard {
   } | null;
 }
 
-interface YgoBanlistInfo {
-  ban_tcg?: string;
-  ban_ocg?: string;
+function ygoMaxCopies(banTcg: string | null): number {
+  // YGOPRODeck's tags: "Forbidden" | "Limited" | "Semi-Limited" (never "Banned").
+  switch (banTcg) {
+    case "Forbidden":
+      return 0;
+    case "Limited":
+      return 1;
+    case "Semi-Limited":
+      return 2;
+    default:
+      return 3;
+  }
 }
 
-function ygoMaxCopies(banlistInfo: YgoBanlistInfo | null | undefined): number {
-  const tag = banlistInfo?.ban_tcg;
-  if (!tag) return 3;
-  if (tag === "Banned") return 0;
-  if (tag === "Limited") return 1;
-  if (tag === "Semi-Limited") return 2;
-  return 3;
-}
-
-function ygoViolation(
-  inDeck: number,
-  banlistInfo: YgoBanlistInfo | null | undefined,
-): string | null {
-  const max = ygoMaxCopies(banlistInfo);
-  if (inDeck <= max) return null;
-  switch (banlistInfo?.ban_tcg) {
-    case "Banned":
-      return "Banned in TCG";
+function ygoViolation(inDeck: number, banTcg: string | null): string | null {
+  if (inDeck <= ygoMaxCopies(banTcg)) return null;
+  switch (banTcg) {
+    case "Forbidden":
+      return "Forbidden in TCG";
     case "Limited":
       return "Limited to 1 in TCG";
     case "Semi-Limited":
@@ -59,6 +55,60 @@ function ygoViolation(
     default:
       return "Max 3 copies per deck";
   }
+}
+
+// Fresh banlist > cached banlist_info on each card.raw, because the YGOPRODeck
+// payload we cached when the card first hit the collection has the banlist
+// state at *that* moment — but Konami publishes new banlists quarterly.
+async function fetchYgoBanlist(): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  try {
+    const res = await fetch(
+      "https://db.ygoprodeck.com/api/v7/cardinfo.php?banlist=tcg",
+      { next: { revalidate: 86400 } },
+    );
+    if (!res.ok) return out;
+    const json = (await res.json()) as {
+      data?: Array<{ id: number; banlist_info?: { ban_tcg?: string } }>;
+    };
+    for (const c of json.data ?? []) {
+      const tag = c.banlist_info?.ban_tcg;
+      if (tag) out.set(String(c.id), tag);
+    }
+  } catch {
+    // banlist check just becomes a no-op
+  }
+  return out;
+}
+
+function parsePrice(raw: unknown): number | null {
+  if (typeof raw !== "string" || raw === "") return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractPriceInfo(
+  game: Game,
+  name: string,
+  raw: unknown,
+): { estPriceUsd: number | null; tcgplayerUrl: string | null } {
+  if (game === "MTG") {
+    const r = raw as {
+      prices?: { usd?: string | null };
+      purchase_uris?: { tcgplayer?: string };
+    } | null;
+    return {
+      estPriceUsd: parsePrice(r?.prices?.usd),
+      tcgplayerUrl: r?.purchase_uris?.tcgplayer ?? null,
+    };
+  }
+  const r = raw as {
+    card_prices?: Array<{ tcgplayer_price?: string }>;
+  } | null;
+  return {
+    estPriceUsd: parsePrice(r?.card_prices?.[0]?.tcgplayer_price),
+    tcgplayerUrl: `https://www.tcgplayer.com/search/yugioh/product?q=${encodeURIComponent(name)}`,
+  };
 }
 
 export default async function DeckEditorPage({
@@ -103,14 +153,14 @@ export default async function DeckEditorPage({
     }
   }
 
+  const ygoBanlist =
+    deck.game === "YGO" ? await fetchYgoBanlist() : new Map<string, string>();
+
   function toDisplay(dc: JoinedDeckCard): DeckCardDisplay | null {
     if (!dc.card) return null;
     const c = dc.card;
-    const banlist =
-      c.game === "YGO"
-        ? ((c.raw as { banlist_info?: YgoBanlistInfo } | null)?.banlist_info ??
-          null)
-        : null;
+    const banTcg = c.game === "YGO" ? ygoBanlist.get(c.external_id) ?? null : null;
+    const price = extractPriceInfo(c.game, c.name, c.raw);
     return {
       cardId: c.id,
       externalId: c.external_id,
@@ -120,7 +170,9 @@ export default async function DeckEditorPage({
       image_url: c.image_url,
       inDeck: dc.quantity,
       owned: ownedByCard.get(c.id) ?? 0,
-      violation: c.game === "YGO" ? ygoViolation(dc.quantity, banlist) : null,
+      violation: c.game === "YGO" ? ygoViolation(dc.quantity, banTcg) : null,
+      estPriceUsd: price.estPriceUsd,
+      tcgplayerUrl: price.tcgplayerUrl,
     };
   }
 
@@ -163,6 +215,7 @@ export default async function DeckEditorPage({
 
       <DeckEditor
         deckId={deck.id}
+        deckName={deck.name}
         deckGame={deck.game}
         mainCards={mainCards}
         extraCards={extraCards}

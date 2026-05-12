@@ -2,7 +2,7 @@ const BASE = "https://api.scryfall.com";
 
 const headers = {
   // Scryfall asks every client to identify itself.
-  "User-Agent": "cardIO/0.1 (https://github.com/cardio)",
+  "User-Agent": "cardIO/0.1 (https://github.com/luluwu516/cardio)",
   Accept: "application/json;q=0.9,*/*;q=0.8",
 };
 
@@ -116,12 +116,13 @@ export async function searchScryfall(
     q: composed,
     unique: "art",
   });
+  // Only forward `order` when the user actually picked a sort — leaving it
+  // unset lets Scryfall apply its built-in relevance ranking, which is the
+  // intended behaviour of the "Relevance" UI option.
   if (filters.sort && MTG_SORT_FIELDS.has(filters.sort)) {
     params.set("order", filters.sort);
-  } else {
-    params.set("order", "name");
+    if (filters.dir === "desc") params.set("dir", "desc");
   }
-  if (filters.dir === "desc") params.set("dir", "desc");
 
   const res = await fetch(`${BASE}/cards/search?${params}`, {
     headers,

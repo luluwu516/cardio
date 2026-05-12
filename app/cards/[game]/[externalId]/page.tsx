@@ -10,6 +10,7 @@ import {
   mtgVariantsFromRaw,
   ygoVariantsFromRaw,
 } from "@/lib/cards/variants";
+import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
 import type { Game } from "@/lib/cards/types";
 import { BackButton } from "@/components/BackButton";
 import { InlineSymbols } from "@/components/ManaSymbols";
@@ -39,14 +40,6 @@ interface CardDetail {
   set_query: string | null;
   /** Available variants for this card — rarities for YGO, finishes for MTG. */
   variants: string[];
-}
-
-// TCGPlayer search URL by name. We deliberately use the search page (not a
-// specific product) so the user can pick the printing/condition they want on
-// TCGPlayer's side — both games get the same treatment.
-function tcgPlayerSearchUrl(game: Game, name: string): string {
-  const segment = game === "MTG" ? "magic" : "yugioh";
-  return `https://www.tcgplayer.com/search/${segment}/product?q=${encodeURIComponent(name)}`;
 }
 
 function pickSetFromRaw(
@@ -182,6 +175,9 @@ export default async function CardDetailPage({
   const game = rawGame;
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   let detail = await loadFromCards(supabase, game, externalId);
   if (!detail) {
@@ -193,19 +189,24 @@ export default async function CardDetailPage({
   // possibility of duplicate rows (shouldn't happen with our unique index,
   // but be defensive).
   const ownedByVariant: Record<string, number> = {};
-  const { data: cardRow } = await supabase
-    .from("cards")
-    .select("id")
-    .eq("game", game)
-    .eq("external_id", externalId)
-    .maybeSingle();
-  if (cardRow) {
-    const { data } = await supabase
-      .from("user_cards")
-      .select("quantity, variant")
-      .eq("card_id", cardRow.id);
-    for (const row of (data ?? []) as OwnedRow[]) {
-      ownedByVariant[row.variant] = (ownedByVariant[row.variant] ?? 0) + row.quantity;
+  if (user) {
+    const { data: cardRow } = await supabase
+      .from("cards")
+      .select("id")
+      .eq("game", game)
+      .eq("external_id", externalId)
+      .maybeSingle();
+    if (cardRow) {
+      // RLS already restricts user_cards to the current user, but the explicit
+      // filter is cheap insurance and reads clearly at the call site.
+      const { data } = await supabase
+        .from("user_cards")
+        .select("quantity, variant")
+        .eq("card_id", cardRow.id)
+        .eq("user_id", user.id);
+      for (const row of (data ?? []) as OwnedRow[]) {
+        ownedByVariant[row.variant] = (ownedByVariant[row.variant] ?? 0) + row.quantity;
+      }
     }
   }
 

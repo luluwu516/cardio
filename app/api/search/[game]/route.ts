@@ -12,10 +12,8 @@ import {
   type YgoCard,
   type YgoSearchFilters,
 } from "@/lib/cards/ygoprodeck";
-import type { Game, SearchHit } from "@/lib/cards/types";
+import { MAX_SEARCH_RESULTS, type Game, type SearchHit } from "@/lib/cards/types";
 import { createClient } from "@/lib/supabase/server";
-
-const MAX_RESULTS = 30;
 
 function isGame(g: string): g is Game {
   return g === "YGO" || g === "MTG";
@@ -155,11 +153,11 @@ export async function GET(
     const results =
       game === "MTG"
         ? (await searchScryfall(q, filtersRaw as MtgSearchFilters))
-            .slice(0, MAX_RESULTS)
+            .slice(0, MAX_SEARCH_RESULTS)
             .map(mtgHit)
-        : (await searchYgo(q, MAX_RESULTS, filtersRaw as YgoSearchFilters)).map(
-            ygoHit,
-          );
+        : (
+            await searchYgo(q, MAX_SEARCH_RESULTS, filtersRaw as YgoSearchFilters)
+          ).map(ygoHit);
     await attachOwnedCounts(game, results);
     return NextResponse.json({ results });
   } catch (err) {

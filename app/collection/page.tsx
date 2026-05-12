@@ -47,11 +47,14 @@ export default async function CollectionPage() {
     .from("user_cards")
     .select(
       "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, raw)",
-    )
-    .order("created_at", { ascending: false });
+    );
 
-  const rows: CollectionRow[] = ((data ?? []) as unknown as RawJoin[]).map(
-    (r) => ({
+  // Sort client-side: PostgREST can't order the top-level rows by a column on
+  // an embedded relation, and we want the same card's variants (e.g. Foil +
+  // Nonfoil of one printing) to sit next to each other rather than being
+  // scattered by insertion time.
+  const rows: CollectionRow[] = ((data ?? []) as unknown as RawJoin[])
+    .map((r) => ({
       id: r.id,
       quantity: r.quantity,
       variant: r.variant,
@@ -67,8 +70,14 @@ export default async function CollectionPage() {
             set: pickSet(r.card.game, r.card.raw),
           }
         : null,
-    }),
-  );
+    }))
+    .sort((a, b) => {
+      const an = a.card?.name ?? "";
+      const bn = b.card?.name ?? "";
+      const byName = an.localeCompare(bn);
+      if (byName !== 0) return byName;
+      return a.variant.localeCompare(b.variant);
+    });
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">

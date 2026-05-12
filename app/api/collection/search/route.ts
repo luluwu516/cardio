@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { Game, SearchHit } from "@/lib/cards/types";
-
-const MAX_RESULTS = 30;
+import { MAX_SEARCH_RESULTS, type Game, type SearchHit } from "@/lib/cards/types";
 
 function isGame(g: string): g is Game {
   return g === "YGO" || g === "MTG";
@@ -77,6 +75,6 @@ export async function GET(request: Request) {
     }
   }
 
-  const results = Array.from(ownedByExt.values()).slice(0, MAX_RESULTS);
+  const results = Array.from(ownedByExt.values()).slice(0, MAX_SEARCH_RESULTS);
   return NextResponse.json({ results });
 }

@@ -68,7 +68,6 @@ function buildMissingCsv(rows: MissingRow[]): { csv: string; total: number } {
     "game",
     "card_name",
     "quantity_needed",
-    "set",
     "tcgplayer_url",
     "est_price_usd",
     "est_subtotal_usd",
@@ -84,14 +83,13 @@ function buildMissingCsv(rows: MissingRow[]): { csv: string; total: number } {
         r.game,
         csvEscape(r.name),
         r.needed,
-        "",
         csvEscape(r.tcgplayerUrl ?? ""),
         r.estPriceUsd !== null ? r.estPriceUsd.toFixed(2) : "",
         subtotal !== null ? subtotal.toFixed(2) : "",
       ].join(","),
     );
   }
-  lines.push(["", "TOTAL", "", "", "", "", total.toFixed(2)].join(","));
+  lines.push(["", "TOTAL", "", "", "", total.toFixed(2)].join(","));
   return { csv: lines.join("\n"), total };
 }
 

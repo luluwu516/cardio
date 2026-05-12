@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// Paths that should NOT be redirected to /login when there's no session.
+// `/api/health` is hit by Vercel Cron with a bearer-token header (no auth
+// cookie), so the redirect would replace the real response with a 307 to
+// /login — making the cron noisy and useless.
+const PUBLIC_PATHS = ["/login", "/auth", "/api/health"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

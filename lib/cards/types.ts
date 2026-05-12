@@ -4,6 +4,11 @@
 
 export type Game = "YGO" | "MTG";
 
+// Upper bound on cards returned from any single search endpoint
+// (/api/search/[game] and /api/collection/search). Centralised so both stay
+// in lockstep with the search UI grid.
+export const MAX_SEARCH_RESULTS = 30;
+
 export interface SearchHit {
   game: Game;
   external_id: string;

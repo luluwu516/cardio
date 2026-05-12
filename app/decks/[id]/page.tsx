@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { BackButton } from "@/components/BackButton";
+import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
 import type { Game } from "@/lib/cards/types";
 import { deleteDeck, renameDeck } from "../actions";
 import { DeckEditor, type DeckCardDisplay } from "./DeckEditor";
@@ -91,23 +92,21 @@ function extractPriceInfo(
   game: Game,
   name: string,
   raw: unknown,
-): { estPriceUsd: number | null; tcgplayerUrl: string | null } {
+): { estPriceUsd: number | null; tcgplayerUrl: string } {
+  // Always a search URL (vs. a specific-product page) so the buylist row lets
+  // the user choose printing / condition on TCGPlayer's side. Matches the
+  // detail-page treatment.
+  const tcgplayerUrl = tcgPlayerSearchUrl(game, name);
   if (game === "MTG") {
-    const r = raw as {
-      prices?: { usd?: string | null };
-      purchase_uris?: { tcgplayer?: string };
-    } | null;
-    return {
-      estPriceUsd: parsePrice(r?.prices?.usd),
-      tcgplayerUrl: r?.purchase_uris?.tcgplayer ?? null,
-    };
+    const r = raw as { prices?: { usd?: string | null } } | null;
+    return { estPriceUsd: parsePrice(r?.prices?.usd), tcgplayerUrl };
   }
   const r = raw as {
     card_prices?: Array<{ tcgplayer_price?: string }>;
   } | null;
   return {
     estPriceUsd: parsePrice(r?.card_prices?.[0]?.tcgplayer_price),
-    tcgplayerUrl: `https://www.tcgplayer.com/search/yugioh/product?q=${encodeURIComponent(name)}`,
+    tcgplayerUrl,
   };
 }
 

@@ -25,18 +25,19 @@ create table if not exists public.cards (
 create index if not exists cards_game_name_idx on public.cards (game, name);
 
 -- Per-user ownership.
+-- `variant` is the user's rarity (YGO: "Common", "Secret Rare", …) or finish
+-- (MTG: "Nonfoil", "Foil", "Etched"). One row per (card, variant) per user.
 create table if not exists public.user_cards (
   id                 uuid primary key default gen_random_uuid(),
   user_id            uuid not null references auth.users on delete cascade,
   card_id            uuid not null references public.cards on delete restrict,
+  variant            text not null,
   quantity           int  not null default 1 check (quantity > 0),
-  condition          text not null default 'NM' check (condition in ('NM','LP','MP','HP','DMG')),
-  foil               boolean not null default false,   -- MTG-relevant
   acquired_at        date,
   acquired_price_usd numeric(10,2),
   notes              text,
   created_at         timestamptz not null default now(),
-  unique (user_id, card_id, condition, foil)
+  unique (user_id, card_id, variant)
 );
 create index if not exists user_cards_user_id_idx on public.user_cards (user_id);
 -- Speeds up the "what does the user own of these card ids?" lookup that

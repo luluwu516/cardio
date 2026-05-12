@@ -11,8 +11,7 @@ import { changeQuantity, removeFromCollection } from "./actions";
 export interface CollectionRow {
   id: string;
   quantity: number;
-  condition: string;
-  foil: boolean;
+  variant: string;
   created_at: string;
   card: {
     id: string;
@@ -21,6 +20,7 @@ export interface CollectionRow {
     name: string;
     type: string | null;
     image_url: string | null;
+    set: string | null;
   } | null;
 }
 
@@ -29,6 +29,61 @@ const FILTERS: GameFilter[] = ["YGO", "MTG"];
 
 function parseGameParam(v: string | null): GameFilter {
   return v === "MTG" ? "MTG" : "YGO";
+}
+
+function csvEscape(value: string | number | null): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function ymd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+
+const CSV_HEADER = [
+  "game",
+  "external_id",
+  "name",
+  "type",
+  "variant",
+  "quantity",
+  "set",
+  "created_at",
+].join(",");
+
+function buildCollectionCsv(rows: CollectionRow[]): string {
+  const lines: string[] = [CSV_HEADER];
+  for (const row of rows) {
+    const card = row.card;
+    if (!card) continue;
+    lines.push(
+      [
+        card.game,
+        csvEscape(card.external_id),
+        csvEscape(card.name),
+        csvEscape(card.type),
+        csvEscape(row.variant),
+        row.quantity,
+        csvEscape(card.set),
+        row.created_at,
+      ].join(","),
+    );
+  }
+  return lines.join("\n");
+}
+
+function downloadBlob(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function CollectionList({ rows }: { rows: CollectionRow[] }) {
@@ -65,6 +120,20 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
     });
   }, [rows, query, gameFilter]);
 
+  // Export every row of the chosen game — not just what's currently visible
+  // through the search filter. The user explicitly asked for YGO and MTG to
+  // export as separate files.
+  function exportCsv(game: GameFilter) {
+    const subset = rows.filter((r) => r.card?.game === game);
+    if (subset.length === 0) return;
+    const csv = buildCollectionCsv(subset);
+    const filename = `cardio-${game.toLowerCase()}-collection-${ymd(new Date())}.csv`;
+    downloadBlob(csv, filename, "text/csv;charset=utf-8");
+  }
+
+  const ygoCount = rows.filter((r) => r.card?.game === "YGO").length;
+  const mtgCount = rows.filter((r) => r.card?.game === "MTG").length;
+
   return (
     <>
       <div className="mb-3 space-y-2">
@@ -73,21 +142,39 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
           onChange={setQuery}
           placeholder="Search your collection by name"
         />
-        <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
-          {FILTERS.map((f) => (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setGameFilter(f)}
+                className={
+                  "rounded px-3 py-1 text-xs font-medium transition-colors " +
+                  (gameFilter === f
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-black"
+                    : "text-zinc-700 dark:text-zinc-300")
+                }
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              key={f}
-              onClick={() => setGameFilter(f)}
-              className={
-                "rounded px-3 py-1 text-xs font-medium transition-colors " +
-                (gameFilter === f
-                  ? "bg-zinc-900 text-white dark:bg-white dark:text-black"
-                  : "text-zinc-700 dark:text-zinc-300")
-              }
+              onClick={() => exportCsv("YGO")}
+              disabled={ygoCount === 0}
+              className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
-              {f}
+              Export YGO CSV
             </button>
-          ))}
+            <button
+              onClick={() => exportCsv("MTG")}
+              disabled={mtgCount === 0}
+              className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Export MTG CSV
+            </button>
+          </div>
         </div>
       </div>
 
@@ -124,14 +211,16 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
                     ) : null}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{card.name}</p>
+                    <p className="truncate text-sm font-medium">
+                      {card.name}
+                      <span className="ml-1 text-xs font-normal text-zinc-500">
+                        ({row.variant})
+                      </span>
+                    </p>
                     {card.type ? (
                       <p className="truncate text-xs text-zinc-500">
                         {card.type}
                       </p>
-                    ) : null}
-                    {row.foil ? (
-                      <p className="text-xs text-zinc-500">foil</p>
                     ) : null}
                   </div>
                 </Link>

@@ -5,14 +5,15 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getScryfallById, scryfallImage } from "@/lib/cards/scryfall";
 import { getYgoById, ygoImage } from "@/lib/cards/ygoprodeck";
-import type { Game } from "@/lib/cards/types";
 import {
-  addToCollection,
-  removeAllFromCollection,
-  removeOneFromCollection,
-} from "@/app/search/actions";
+  defaultVariant,
+  mtgVariantsFromRaw,
+  ygoVariantsFromRaw,
+} from "@/lib/cards/variants";
+import type { Game } from "@/lib/cards/types";
 import { BackButton } from "@/components/BackButton";
 import { InlineSymbols } from "@/components/ManaSymbols";
+import { VariantPicker } from "./VariantPicker";
 
 function isGame(g: string): g is Game {
   return g === "YGO" || g === "MTG";
@@ -25,7 +26,6 @@ interface CardDetail {
   type: string | null;
   description: string | null;
   image_url: string | null;
-  // game-specific
   mana_cost: string | null;
   attribute: string | null;
   atk: number | null;
@@ -35,10 +35,18 @@ interface CardDetail {
   legalities: Record<string, string> | null;
   tcgplayer_url: string | null;
   scryfall_uri: string | null;
-  // Set badge below the subtitle. `setQuery` is the value to pass to /search?set=
-  // (set name for YGO, set code for MTG — what each API expects).
   set_name: string | null;
   set_query: string | null;
+  /** Available variants for this card — rarities for YGO, finishes for MTG. */
+  variants: string[];
+}
+
+// TCGPlayer search URL by name. We deliberately use the search page (not a
+// specific product) so the user can pick the printing/condition they want on
+// TCGPlayer's side — both games get the same treatment.
+function tcgPlayerSearchUrl(game: Game, name: string): string {
+  const segment = game === "MTG" ? "magic" : "yugioh";
+  return `https://www.tcgplayer.com/search/${segment}/product?q=${encodeURIComponent(name)}`;
 }
 
 function pickSetFromRaw(
@@ -61,7 +69,11 @@ function pickSetFromRaw(
   return { set_name: name, set_query: name };
 }
 
-async function loadFromCards(supabase: ReturnType<typeof createClient> extends Promise<infer S> ? S : never, game: Game, externalId: string): Promise<CardDetail | null> {
+async function loadFromCards(
+  supabase: ReturnType<typeof createClient> extends Promise<infer S> ? S : never,
+  game: Game,
+  externalId: string,
+): Promise<CardDetail | null> {
   const { data } = await supabase
     .from("cards")
     .select("*")
@@ -69,9 +81,10 @@ async function loadFromCards(supabase: ReturnType<typeof createClient> extends P
     .eq("external_id", externalId)
     .maybeSingle();
   if (!data) return null;
-  // raw is jsonb; pull out a few extra fields for display.
   const raw = (data.raw ?? {}) as Record<string, unknown>;
   const setInfo = pickSetFromRaw(game, raw);
+  const variants =
+    game === "YGO" ? ygoVariantsFromRaw(raw) : mtgVariantsFromRaw(raw);
   return {
     game,
     external_id: data.external_id,
@@ -90,14 +103,11 @@ async function loadFromCards(supabase: ReturnType<typeof createClient> extends P
       raw.legalities && typeof raw.legalities === "object"
         ? (raw.legalities as Record<string, string>)
         : null,
-    tcgplayer_url:
-      typeof (raw.purchase_uris as Record<string, string> | undefined)
-        ?.tcgplayer === "string"
-        ? (raw.purchase_uris as Record<string, string>).tcgplayer
-        : null,
+    tcgplayer_url: tcgPlayerSearchUrl(game, data.name),
     scryfall_uri:
       typeof raw.scryfall_uri === "string" ? (raw.scryfall_uri as string) : null,
     ...setInfo,
+    variants,
   };
 }
 
@@ -122,10 +132,11 @@ async function loadFromExternal(
       level: null,
       archetype: null,
       legalities: c.legalities ?? null,
-      tcgplayer_url: c.purchase_uris?.tcgplayer ?? null,
+      tcgplayer_url: tcgPlayerSearchUrl("MTG", c.name),
       scryfall_uri: null,
       set_name: c.set_name ?? c.set ?? null,
       set_query: c.set ?? null,
+      variants: mtgVariantsFromRaw(c),
     };
   }
   const c = await getYgoById(externalId).catch(() => null);
@@ -145,27 +156,28 @@ async function loadFromExternal(
     level: typeof c.level === "number" ? c.level : null,
     archetype: c.archetype ?? null,
     legalities: null,
-    tcgplayer_url: c.card_prices?.[0]?.tcgplayer_price
-      ? `https://www.tcgplayer.com/search/yugioh/product?q=${encodeURIComponent(
-          c.name,
-        )}`
-      : null,
+    tcgplayer_url: tcgPlayerSearchUrl("YGO", c.name),
     scryfall_uri: null,
     set_name: ygoSetName,
     set_query: ygoSetName,
+    variants: ygoVariantsFromRaw(c),
   };
 }
 
 interface OwnedRow {
   quantity: number;
+  variant: string;
 }
 
 export default async function CardDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ game: string; externalId: string }>;
+  searchParams: Promise<{ action?: string }>;
 }) {
   const { game: rawGame, externalId } = await params;
+  const { action } = await searchParams;
   if (!isGame(rawGame)) notFound();
   const game = rawGame;
 
@@ -177,8 +189,10 @@ export default async function CardDetailPage({
   }
   if (!detail) notFound();
 
-  // Figure out ownership.
-  let owned: OwnedRow[] = [];
+  // Initial owned quantities, keyed by variant. Aggregates over the small
+  // possibility of duplicate rows (shouldn't happen with our unique index,
+  // but be defensive).
+  const ownedByVariant: Record<string, number> = {};
   const { data: cardRow } = await supabase
     .from("cards")
     .select("id")
@@ -188,15 +202,24 @@ export default async function CardDetailPage({
   if (cardRow) {
     const { data } = await supabase
       .from("user_cards")
-      .select("quantity")
+      .select("quantity, variant")
       .eq("card_id", cardRow.id);
-    owned = (data ?? []) as OwnedRow[];
+    for (const row of (data ?? []) as OwnedRow[]) {
+      ownedByVariant[row.variant] = (ownedByVariant[row.variant] ?? 0) + row.quantity;
+    }
   }
-  const ownedTotal = owned.reduce((sum, r) => sum + r.quantity, 0);
 
-  const addAction = addToCollection.bind(null, game, externalId);
-  const removeOneAction = removeOneFromCollection.bind(null, game, externalId);
-  const removeAllAction = removeAllFromCollection.bind(null, game, externalId);
+  // Make sure any variant a user already owns shows up in the picker even
+  // if the card's current API payload no longer lists that rarity / finish.
+  const seenVariants = new Set(detail.variants);
+  for (const v of Object.keys(ownedByVariant)) {
+    if (!seenVariants.has(v)) {
+      detail.variants.push(v);
+      seenVariants.add(v);
+    }
+  }
+
+  const autoOpen = action === "add";
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
@@ -294,49 +317,14 @@ export default async function CardDetailPage({
         </section>
       ) : null}
 
-      <section className="mt-5 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">
-            {ownedTotal === 0
-              ? "Not in collection"
-              : `In collection · ${ownedTotal}`}
-          </p>
-          {ownedTotal === 0 ? (
-            <form action={addAction}>
-              <button className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200">
-                Add
-              </button>
-            </form>
-          ) : (
-            <div className="flex items-center gap-1">
-              <form action={removeOneAction}>
-                <button
-                  aria-label="Decrease"
-                  className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                >
-                  −
-                </button>
-              </form>
-              <span className="w-6 text-center text-sm font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
-                {ownedTotal}
-              </span>
-              <form action={addAction}>
-                <button
-                  aria-label="Increase"
-                  className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                >
-                  +
-                </button>
-              </form>
-              <form action={removeAllAction} className="ml-1">
-                <button className="h-8 rounded-md border border-zinc-300 px-3 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
-                  Remove
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
-      </section>
+      <VariantPicker
+        game={detail.game}
+        externalId={detail.external_id}
+        variants={detail.variants}
+        initialOwned={ownedByVariant}
+        autoOpen={autoOpen}
+        defaultVariant={defaultVariant(detail.game, detail.variants)}
+      />
 
       {detail.tcgplayer_url ? (
         <a

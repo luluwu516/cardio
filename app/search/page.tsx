@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, useTransition } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
 import {
@@ -14,7 +14,6 @@ import {
   type SearchFilters,
 } from "@/lib/cards/filters";
 import { SearchInput } from "@/components/SearchInput";
-import { applyDelta } from "./actions";
 
 const GAMES: Game[] = ["YGO", "MTG"];
 
@@ -142,10 +141,6 @@ function SearchInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [pending, setPending] = useState<Record<string, number>>({});
-  const [committing, setCommitting] = useState<Record<string, boolean>>({});
-  const [, startTransition] = useTransition();
-
   const committedTrimmed = committedQuery.trim();
   const committedGameFilters = filtersForGame(committedFilters, game);
   const isValidQuery = committedTrimmed.length >= 2;
@@ -187,7 +182,6 @@ function SearchInner() {
           setResults([]);
         } else {
           setResults(data.results);
-          setPending({});
         }
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
@@ -212,7 +206,6 @@ function SearchInner() {
     setCommittedFilters({});
     setResults([]);
     setError(null);
-    setPending({});
   }
 
   function setField(key: keyof SearchFilters, value: string | undefined) {
@@ -280,51 +273,6 @@ function SearchInner() {
     if (filters.dir) keep.dir = filters.dir;
     setFilters(keep);
     setCommittedFilters(keep);
-  }
-
-  function adjust(hit: SearchHit, sign: 1 | -1) {
-    const key = keyOf(hit);
-    if (committing[key]) return;
-    setPending((p) => {
-      const nextDelta = (p[key] ?? 0) + sign;
-      if (hit.owned + nextDelta < 0) return p;
-      const next = { ...p };
-      if (nextDelta === 0) delete next[key];
-      else next[key] = nextDelta;
-      return next;
-    });
-  }
-
-  function confirm(hit: SearchHit) {
-    const key = keyOf(hit);
-    const delta = pending[key] ?? 0;
-    if (delta === 0) return;
-    setCommitting((c) => ({ ...c, [key]: true }));
-    startTransition(async () => {
-      try {
-        await applyDelta(hit.game, hit.external_id, delta);
-        setResults((rs) =>
-          rs.map((r) =>
-            keyOf(r) === key
-              ? { ...r, owned: Math.max(0, r.owned + delta) }
-              : r,
-          ),
-        );
-        setPending((p) => {
-          const next = { ...p };
-          delete next[key];
-          return next;
-        });
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setCommitting((c) => {
-          const next = { ...c };
-          delete next[key];
-          return next;
-        });
-      }
-    });
   }
 
   return (
@@ -441,20 +389,19 @@ function SearchInner() {
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {display.map((hit) => {
           const key = keyOf(hit);
-          const delta = pending[key] ?? 0;
-          const isPending = delta !== 0;
-          const isCommitting = !!committing[key];
-          const count = Math.max(0, hit.owned + delta);
+          const owned = hit.owned;
+          const detailHref = `/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`;
+          // When the user clicks "Add" from a card not yet in their collection
+          // the detail page should land with the variant picker pre-opened
+          // and the default variant (Common / Nonfoil) primed to +1.
+          const addHref = `${detailHref}?action=add`;
 
           return (
             <li
               key={key}
               className="overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
-              <Link
-                href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
-                className="block"
-              >
+              <Link href={detailHref} className="block">
                 <div className="relative aspect-[5/7] w-full bg-zinc-100 dark:bg-zinc-800">
                   {hit.image_url ? (
                     <Image
@@ -477,51 +424,20 @@ function SearchInner() {
               </Link>
 
               <div className="px-2 pb-2 pt-1">
-                {count === 0 && !isPending ? (
-                  <button
-                    onClick={() => adjust(hit, +1)}
-                    className="h-8 w-full rounded-md border border-zinc-300 px-2 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                {owned === 0 ? (
+                  <Link
+                    href={addHref}
+                    className="flex h-8 w-full items-center justify-center rounded-md border border-zinc-300 px-2 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
                     Add
-                  </button>
+                  </Link>
                 ) : (
-                  <div className="grid grid-cols-5 gap-1">
-                    <div className="col-span-3 flex items-center gap-1">
-                      <button
-                        onClick={() => adjust(hit, -1)}
-                        disabled={isCommitting}
-                        aria-label="Decrease"
-                        className="h-8 w-8 shrink-0 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                      >
-                        −
-                      </button>
-                      <span
-                        className={
-                          "flex-1 text-center text-sm font-medium tabular-nums " +
-                          (isPending
-                            ? "text-zinc-900 dark:text-zinc-100"
-                            : "text-emerald-600 dark:text-emerald-400")
-                        }
-                      >
-                        {count}
-                      </span>
-                      <button
-                        onClick={() => adjust(hit, +1)}
-                        disabled={isCommitting}
-                        aria-label="Increase"
-                        className="h-8 w-8 shrink-0 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => confirm(hit)}
-                      disabled={!isPending || isCommitting}
-                      className="col-span-2 h-8 rounded-md bg-zinc-900 px-2 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                    >
-                      {isCommitting ? "Saving…" : "Confirm"}
-                    </button>
-                  </div>
+                  <Link
+                    href={detailHref}
+                    className="flex h-8 w-full items-center justify-center rounded-md bg-emerald-50 px-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+                  >
+                    In collection · {owned}
+                  </Link>
                 )}
               </div>
             </li>

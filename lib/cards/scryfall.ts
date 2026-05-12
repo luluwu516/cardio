@@ -15,6 +15,8 @@ export interface ScryfallCard {
   frame?: string;
   set?: string;
   set_name?: string;
+  finishes?: string[]; // ["nonfoil","foil","etched"]
+  full_art?: boolean;
   image_uris?: {
     small?: string;
     normal?: string;
@@ -107,9 +109,12 @@ export async function searchScryfall(
 ): Promise<ScryfallCard[]> {
   const composed = buildScryfallQuery(query, filters);
   if (!composed) return [];
+  // `unique=art` separates printings with distinct artwork (e.g. regular vs.
+  // full-art) so users can collect them individually. `unique=cards` would
+  // dedupe to a single row per oracle ID and hide full-art variants.
   const params = new URLSearchParams({
     q: composed,
-    unique: "cards",
+    unique: "art",
   });
   if (filters.sort && MTG_SORT_FIELDS.has(filters.sort)) {
     params.set("order", filters.sort);

@@ -56,7 +56,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Roll up multiple variants (e.g. NM + LP rows of the same card) into one hit.
+  // Roll up multiple variant rows (e.g. Common + Secret Rare of the same
+  // YGO card) into one hit so the deck builder doesn't list duplicates.
   const ownedByExt = new Map<string, SearchHit>();
   for (const row of (data ?? []) as unknown as JoinedRow[]) {
     if (!row.card) continue;

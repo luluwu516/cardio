@@ -4,19 +4,70 @@ import {
   scryfallImage,
   searchScryfall,
   type ScryfallCard,
+  type MtgSearchFilters,
 } from "@/lib/cards/scryfall";
 import {
   searchYgo,
   ygoImage,
   type YgoCard,
+  type YgoSearchFilters,
 } from "@/lib/cards/ygoprodeck";
 import type { Game, SearchHit } from "@/lib/cards/types";
 import { createClient } from "@/lib/supabase/server";
 
-const MAX_RESULTS = 20;
+const MAX_RESULTS = 30;
 
 function isGame(g: string): g is Game {
   return g === "YGO" || g === "MTG";
+}
+
+function intParam(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function dirParam(value: string | null): "asc" | "desc" | undefined {
+  return value === "asc" || value === "desc" ? value : undefined;
+}
+
+function readYgoFilters(p: URLSearchParams): YgoSearchFilters {
+  return {
+    type: p.get("type") ?? undefined,
+    attribute: p.get("attribute") ?? undefined,
+    race: p.get("race") ?? undefined,
+    atkMin: intParam(p.get("atkMin")),
+    atkMax: intParam(p.get("atkMax")),
+    defMin: intParam(p.get("defMin")),
+    defMax: intParam(p.get("defMax")),
+    set: p.get("set") ?? undefined,
+    desc: p.get("desc") ?? undefined,
+    sort: p.get("sort") ?? undefined,
+    dir: dirParam(p.get("dir")),
+  };
+}
+
+function readMtgFilters(p: URLSearchParams): MtgSearchFilters {
+  return {
+    type: p.get("type") ?? undefined,
+    colors: p.get("colors") ?? undefined,
+    cmcMin: intParam(p.get("cmcMin")),
+    cmcMax: intParam(p.get("cmcMax")),
+    powerMin: intParam(p.get("powerMin")),
+    powerMax: intParam(p.get("powerMax")),
+    toughMin: intParam(p.get("toughMin")),
+    toughMax: intParam(p.get("toughMax")),
+    set: p.get("set") ?? undefined,
+    desc: p.get("desc") ?? undefined,
+    sort: p.get("sort") ?? undefined,
+    dir: dirParam(p.get("dir")),
+  };
+}
+
+function hasAnyValue(obj: Record<string, unknown>): boolean {
+  return Object.values(obj).some(
+    (v) => v !== undefined && v !== null && v !== "",
+  );
 }
 
 function mtgHit(c: ScryfallCard): SearchHit {
@@ -88,16 +139,27 @@ export async function GET(
     );
   }
 
-  const q = new URL(request.url).searchParams.get("q")?.trim() ?? "";
-  if (q.length < 2) {
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q")?.trim() ?? "";
+
+  // Either a real query (≥ 2 chars) or at least one advanced filter must be
+  // present — otherwise an empty filter set would page through everything.
+  const filtersRaw =
+    game === "YGO" ? readYgoFilters(url.searchParams) : readMtgFilters(url.searchParams);
+  const hasFilters = hasAnyValue(filtersRaw as Record<string, unknown>);
+  if (q.length < 2 && !hasFilters) {
     return NextResponse.json({ results: [] });
   }
 
   try {
     const results =
       game === "MTG"
-        ? (await searchScryfall(q)).slice(0, MAX_RESULTS).map(mtgHit)
-        : (await searchYgo(q, MAX_RESULTS)).map(ygoHit);
+        ? (await searchScryfall(q, filtersRaw as MtgSearchFilters))
+            .slice(0, MAX_RESULTS)
+            .map(mtgHit)
+        : (await searchYgo(q, MAX_RESULTS, filtersRaw as YgoSearchFilters)).map(
+            ygoHit,
+          );
     await attachOwnedCounts(game, results);
     return NextResponse.json({ results });
   } catch (err) {

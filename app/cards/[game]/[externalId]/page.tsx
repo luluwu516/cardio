@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -34,6 +35,30 @@ interface CardDetail {
   legalities: Record<string, string> | null;
   tcgplayer_url: string | null;
   scryfall_uri: string | null;
+  // Set badge below the subtitle. `setQuery` is the value to pass to /search?set=
+  // (set name for YGO, set code for MTG — what each API expects).
+  set_name: string | null;
+  set_query: string | null;
+}
+
+function pickSetFromRaw(
+  game: Game,
+  raw: Record<string, unknown>,
+): { set_name: string | null; set_query: string | null } {
+  if (game === "MTG") {
+    const name = typeof raw.set_name === "string" ? raw.set_name : null;
+    const code = typeof raw.set === "string" ? raw.set : null;
+    return { set_name: name ?? code, set_query: code };
+  }
+  const sets = Array.isArray(raw.card_sets)
+    ? (raw.card_sets as Array<Record<string, unknown>>)
+    : [];
+  const first = sets[0];
+  const name =
+    first && typeof first.set_name === "string"
+      ? (first.set_name as string)
+      : null;
+  return { set_name: name, set_query: name };
 }
 
 async function loadFromCards(supabase: ReturnType<typeof createClient> extends Promise<infer S> ? S : never, game: Game, externalId: string): Promise<CardDetail | null> {
@@ -46,6 +71,7 @@ async function loadFromCards(supabase: ReturnType<typeof createClient> extends P
   if (!data) return null;
   // raw is jsonb; pull out a few extra fields for display.
   const raw = (data.raw ?? {}) as Record<string, unknown>;
+  const setInfo = pickSetFromRaw(game, raw);
   return {
     game,
     external_id: data.external_id,
@@ -71,6 +97,7 @@ async function loadFromCards(supabase: ReturnType<typeof createClient> extends P
         : null,
     scryfall_uri:
       typeof raw.scryfall_uri === "string" ? (raw.scryfall_uri as string) : null,
+    ...setInfo,
   };
 }
 
@@ -97,10 +124,13 @@ async function loadFromExternal(
       legalities: c.legalities ?? null,
       tcgplayer_url: c.purchase_uris?.tcgplayer ?? null,
       scryfall_uri: null,
+      set_name: c.set_name ?? c.set ?? null,
+      set_query: c.set ?? null,
     };
   }
   const c = await getYgoById(externalId).catch(() => null);
   if (!c) return null;
+  const ygoSetName = c.card_sets?.[0]?.set_name ?? null;
   return {
     game,
     external_id: String(c.id),
@@ -121,6 +151,8 @@ async function loadFromExternal(
         )}`
       : null,
     scryfall_uri: null,
+    set_name: ygoSetName,
+    set_query: ygoSetName,
   };
 }
 
@@ -200,6 +232,16 @@ export default async function CardDetailPage({
           {detail.type ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               {detail.type}
+            </p>
+          ) : null}
+          {detail.set_name && detail.set_query ? (
+            <p className="text-sm">
+              <Link
+                href={`/search?game=${detail.game}&set=${encodeURIComponent(detail.set_query)}`}
+                className="font-medium text-zinc-700 underline decoration-dotted hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+              >
+                {detail.set_name}
+              </Link>
             </p>
           ) : null}
 

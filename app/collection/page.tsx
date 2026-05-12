@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { CollectionList, type CollectionRow } from "./CollectionList";
@@ -37,7 +38,9 @@ export default async function CollectionPage() {
           </Link>
         </div>
       ) : (
-        <CollectionList rows={rows} />
+        <Suspense fallback={null}>
+          <CollectionList rows={rows} />
+        </Suspense>
       )}
     </main>
   );

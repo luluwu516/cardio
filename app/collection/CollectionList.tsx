@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { SearchInput } from "@/components/SearchInput";
 import { changeQuantity, removeFromCollection } from "./actions";
@@ -26,9 +27,33 @@ export interface CollectionRow {
 type GameFilter = "YGO" | "MTG";
 const FILTERS: GameFilter[] = ["YGO", "MTG"];
 
+function parseGameParam(v: string | null): GameFilter {
+  return v === "MTG" ? "MTG" : "YGO";
+}
+
 export function CollectionList({ rows }: { rows: CollectionRow[] }) {
-  const [query, setQuery] = useState("");
-  const [gameFilter, setGameFilter] = useState<GameFilter>("YGO");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Seed from URL so navigating back from a card detail page restores the
+  // tab/query the user was on.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [gameFilter, setGameFilter] = useState<GameFilter>(() =>
+    parseGameParam(searchParams.get("game")),
+  );
+
+  // Mirror state → URL (debounced) so the back-navigation restore works.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (gameFilter !== "YGO") params.set("game", gameFilter);
+    const trimmed = query.trim();
+    if (trimmed) params.set("q", trimmed);
+    const target = params.toString() ? `/collection?${params}` : "/collection";
+    const t = setTimeout(() => {
+      router.replace(target, { scroll: false });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [gameFilter, query, router]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -100,13 +125,14 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{card.name}</p>
-                    <p className="truncate text-xs text-zinc-500">
-                      {card.game} · {card.type ?? ""}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {row.condition}
-                      {row.foil ? " · foil" : ""}
-                    </p>
+                    {card.type ? (
+                      <p className="truncate text-xs text-zinc-500">
+                        {card.type}
+                      </p>
+                    ) : null}
+                    {row.foil ? (
+                      <p className="text-xs text-zinc-500">foil</p>
+                    ) : null}
                   </div>
                 </Link>
                 <div className="flex items-center gap-1">

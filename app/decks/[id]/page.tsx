@@ -119,6 +119,7 @@ export default async function DeckEditorPage({
   const { id } = await params;
   const supabase = await createClient();
 
+  // Round-trip 1: just the deck row — everything else fans out from its id/game.
   const { data: deckRow } = await supabase
     .from("decks")
     .select("id, name, game, format, created_at, updated_at")
@@ -127,18 +128,23 @@ export default async function DeckEditorPage({
   if (!deckRow) notFound();
   const deck = deckRow as Deck;
 
-  const { data: rawDeckCards } = await supabase
-    .from("deck_cards")
-    .select(
-      "quantity, board, card:cards!inner(id, external_id, name, type, image_url, game, raw)",
-    )
-    .eq("deck_id", deck.id);
+  // Round-trip 2: deck contents and the banlist are independent; YGO banlist
+  // is a remote fetch (cached 24h) so don't block on it for MTG decks.
+  const [{ data: rawDeckCards }, ygoBanlist] = await Promise.all([
+    supabase
+      .from("deck_cards")
+      .select(
+        "quantity, board, card:cards!inner(id, external_id, name, type, image_url, game, raw)",
+      )
+      .eq("deck_id", deck.id),
+    deck.game === "YGO" ? fetchYgoBanlist() : Promise.resolve(new Map<string, string>()),
+  ]);
   const deckCards = (rawDeckCards ?? []) as unknown as JoinedDeckCard[];
 
+  // Round-trip 3: owned counts — depends on the card ids we just discovered.
   const cardIds = deckCards
     .map((dc) => dc.card?.id)
     .filter((x): x is string => !!x);
-
   const ownedByCard = new Map<string, number>();
   if (cardIds.length > 0) {
     const { data: owned } = await supabase
@@ -152,9 +158,6 @@ export default async function DeckEditorPage({
       );
     }
   }
-
-  const ygoBanlist =
-    deck.game === "YGO" ? await fetchYgoBanlist() : new Map<string, string>();
 
   function toDisplay(dc: JoinedDeckCard): DeckCardDisplay | null {
     if (!dc.card) return null;

@@ -39,6 +39,9 @@ create table if not exists public.user_cards (
   unique (user_id, card_id, condition, foil)
 );
 create index if not exists user_cards_user_id_idx on public.user_cards (user_id);
+-- Speeds up the "what does the user own of these card ids?" lookup that
+-- the deck editor + card detail pages run on every render.
+create index if not exists user_cards_card_id_idx on public.user_cards (card_id);
 
 -- Decks (Phase 5 schema landed early to avoid migrations later).
 create table if not exists public.decks (

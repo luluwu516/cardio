@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  /* zinc-100 — gives white cards a subtle but distinct edge against the page */
+  --background: #f4f4f5;
   --foreground: #171717;
 }
 

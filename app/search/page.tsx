@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useTransition } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
 import { SearchInput } from "@/components/SearchInput";
@@ -14,9 +15,22 @@ function keyOf(hit: { game: Game; external_id: string }): string {
   return `${hit.game}:${hit.external_id}`;
 }
 
-export default function SearchPage() {
-  const [game, setGame] = useState<Game>("YGO");
-  const [query, setQuery] = useState("");
+function parseGameParam(v: string | null): Game {
+  return v === "MTG" ? "MTG" : "YGO";
+}
+
+function SearchInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Lazy initializers read URL once on mount — after that, state drives URL via
+  // a debounced effect below. Coming back from /cards/... re-mounts the page
+  // and re-reads ?q & ?game, restoring whatever the user was searching.
+  const [game, setGame] = useState<Game>(() =>
+    parseGameParam(searchParams.get("game")),
+  );
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +45,18 @@ export default function SearchPage() {
   const trimmed = query.trim();
   const isValidQuery = trimmed.length >= 2;
   const display = isValidQuery ? results : [];
+
+  // Mirror state → URL (debounced) so back-navigation restores it.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (game !== "YGO") params.set("game", game);
+    if (trimmed) params.set("q", trimmed);
+    const target = params.toString() ? `/search?${params}` : "/search";
+    const t = setTimeout(() => {
+      router.replace(target, { scroll: false });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [game, trimmed, router]);
 
   useEffect(() => {
     if (!isValidQuery) return;
@@ -101,8 +127,6 @@ export default function SearchPage() {
     startTransition(async () => {
       try {
         await applyDelta(hit.game, hit.external_id, delta);
-        // Optimistically reflect the new committed quantity locally so the
-        // UI flips back to the green idle state without a refetch.
         setResults((rs) =>
           rs.map((r) =>
             keyOf(r) === key
@@ -128,7 +152,7 @@ export default function SearchPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
+    <main className="mx-auto w-full max-w-5xl px-4 pb-24 pt-6">
       <h1 className="mb-4 text-2xl font-semibold tracking-tight">Search</h1>
 
       <div className="mb-3 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
@@ -171,7 +195,7 @@ export default function SearchPage() {
         <p className="text-sm text-zinc-500">No results.</p>
       ) : null}
 
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {display.map((hit) => {
           const key = keyOf(hit);
           const delta = pending[key] ?? 0;
@@ -182,7 +206,7 @@ export default function SearchPage() {
           return (
             <li
               key={key}
-              className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+              className="overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
               <Link
                 href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
@@ -194,7 +218,7 @@ export default function SearchPage() {
                       src={hit.image_url}
                       alt={hit.name}
                       fill
-                      sizes="(min-width:640px) 200px, 50vw"
+                      sizes="(min-width:1024px) 200px, (min-width:640px) 240px, 50vw"
                       className="object-contain"
                     />
                   ) : (
@@ -262,5 +286,15 @@ export default function SearchPage() {
         })}
       </ul>
     </main>
+  );
+}
+
+export default function SearchPage() {
+  // Suspense is required by Next.js to gate useSearchParams during static
+  // rendering — without it the page errors out at build time.
+  return (
+    <Suspense fallback={null}>
+      <SearchInner />
+    </Suspense>
   );
 }

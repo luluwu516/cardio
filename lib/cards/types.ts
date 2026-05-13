@@ -4,6 +4,13 @@
 
 export type Game = "YGO" | "MTG";
 
+// Lenient parser for the `?game=` URL param. Defaults to YGO when missing
+// or invalid so callers never have to think about the fallback. Lives next
+// to the Game type because /search and /collection both round-trip it.
+export function parseGameParam(v: string | null): Game {
+  return v === "MTG" ? "MTG" : "YGO";
+}
+
 // Upper bound on cards returned from any single search endpoint
 // (/api/search/[game] and /api/collection/search). Centralised so both stay
 // in lockstep with the search UI grid.

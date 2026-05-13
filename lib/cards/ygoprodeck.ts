@@ -45,6 +45,7 @@ export interface YgoSearchFilters {
   type?: string;
   attribute?: string;
   race?: string;
+  level?: number; // exact match (0–12)
   atkMin?: number;
   atkMax?: number;
   defMin?: number;
@@ -117,9 +118,11 @@ function buildBaseYgoParams(
   if (filters.set) params.set("cardset", filters.set);
   if (filters.desc) params.set("desc", filters.desc);
   // ATK / DEF support a single comparator each. We use gte for "min" and
-  // post-filter to enforce "max" when present.
+  // post-filter to enforce "max" when present. `level` is sent as an exact
+  // match — the UI offers a single dropdown rather than a min/max range.
   if (filters.atkMin !== undefined) params.set("atk", `gte${filters.atkMin}`);
   if (filters.defMin !== undefined) params.set("def", `gte${filters.defMin}`);
+  if (filters.level !== undefined) params.set("level", String(filters.level));
   if (filters.sort && YGO_SORT_FIELDS.has(filters.sort)) {
     params.set("sort", filters.sort);
   }
@@ -141,8 +144,8 @@ export async function searchYgo(
   limit = 20,
   filters: YgoSearchFilters = {},
 ): Promise<YgoCard[]> {
-  // Over-fetch when post-filtering ATK / DEF max bounds since the upstream API
-  // only accepts a single comparator per field.
+  // Over-fetch when post-filtering ATK / DEF max bounds since the upstream
+  // API only accepts a single comparator per field.
   const needsPostFilter =
     filters.atkMax !== undefined || filters.defMax !== undefined;
   const wireLimit = needsPostFilter ? Math.max(limit * 4, 80) : limit;

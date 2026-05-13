@@ -10,6 +10,7 @@ export interface SearchFilters {
   type?: string; // YGOPRODeck exact "type" (e.g. "Effect Monster", "Spell Card")
   attribute?: string; // YGO attribute (DARK/LIGHT/...)
   race?: string; // YGO race (Dragon, Continuous, Normal, ...)
+  level?: string; // YGO level/rank exact match (0–12)
   atkMin?: string;
   atkMax?: string;
   defMin?: string;
@@ -35,6 +36,7 @@ const FILTER_KEYS: Array<keyof SearchFilters> = [
   "type",
   "attribute",
   "race",
+  "level",
   "atkMin",
   "atkMax",
   "defMin",
@@ -92,6 +94,7 @@ export function filtersForGame(
       type: filters.type,
       attribute: filters.attribute,
       race: filters.race,
+      level: filters.level,
       atkMin: filters.atkMin,
       atkMax: filters.atkMax,
       defMin: filters.defMin,

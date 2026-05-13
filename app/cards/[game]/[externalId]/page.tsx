@@ -21,6 +21,10 @@ function isGame(g: string): g is Game {
 }
 
 interface CardDetail {
+  /** UUID on the public.cards row when the card has already been cached
+   *  there; null if we constructed the detail from a live external fetch
+   *  (in which case there can't be any user_cards rows pointing at it). */
+  internal_id: string | null;
   game: Game;
   external_id: string;
   name: string;
@@ -28,6 +32,9 @@ interface CardDetail {
   description: string | null;
   image_url: string | null;
   mana_cost: string | null;
+  /** MTG only: e.g. ["W","U"]. Empty array means colorless; null means YGO
+   *  (the row should be hidden on the detail page). */
+  colors: string[] | null;
   attribute: string | null;
   atk: number | null;
   def: number | null;
@@ -40,6 +47,12 @@ interface CardDetail {
   set_query: string | null;
   /** Available variants for this card — rarities for YGO, finishes for MTG. */
   variants: string[];
+}
+
+function readMtgColors(raw: Record<string, unknown>): string[] {
+  const c = raw.colors;
+  if (!Array.isArray(c)) return [];
+  return c.filter((x): x is string => typeof x === "string");
 }
 
 function pickSetFromRaw(
@@ -79,6 +92,7 @@ async function loadFromCards(
   const variants =
     game === "YGO" ? ygoVariantsFromRaw(raw) : mtgVariantsFromRaw(raw);
   return {
+    internal_id: data.id,
     game,
     external_id: data.external_id,
     name: data.name,
@@ -86,6 +100,7 @@ async function loadFromCards(
     description: data.description,
     image_url: data.image_url,
     mana_cost: data.mana_cost,
+    colors: game === "MTG" ? readMtgColors(raw) : null,
     attribute: data.attribute,
     atk: typeof raw.atk === "number" ? (raw.atk as number) : null,
     def: typeof raw.def === "number" ? (raw.def as number) : null,
@@ -112,6 +127,7 @@ async function loadFromExternal(
     const c = await getScryfallById(externalId).catch(() => null);
     if (!c) return null;
     return {
+      internal_id: null,
       game,
       external_id: c.id,
       name: c.name,
@@ -119,6 +135,7 @@ async function loadFromExternal(
       description: c.oracle_text ?? null,
       image_url: scryfallImage(c),
       mana_cost: c.mana_cost ?? null,
+      colors: c.colors ?? [],
       attribute: null,
       atk: null,
       def: null,
@@ -136,6 +153,7 @@ async function loadFromExternal(
   if (!c) return null;
   const ygoSetName = c.card_sets?.[0]?.set_name ?? null;
   return {
+    internal_id: null,
     game,
     external_id: String(c.id),
     name: c.name,
@@ -143,6 +161,7 @@ async function loadFromExternal(
     description: c.desc,
     image_url: ygoImage(c),
     mana_cost: null,
+    colors: null,
     attribute: c.attribute ?? null,
     atk: typeof c.atk === "number" ? c.atk : null,
     def: typeof c.def === "number" ? c.def : null,
@@ -187,26 +206,20 @@ export default async function CardDetailPage({
 
   // Initial owned quantities, keyed by variant. Aggregates over the small
   // possibility of duplicate rows (shouldn't happen with our unique index,
-  // but be defensive).
+  // but be defensive). When detail.internal_id is null the card was loaded
+  // from a live external fetch — no row in public.cards yet, so by FK
+  // there can't be user_cards rows either; skip the query.
   const ownedByVariant: Record<string, number> = {};
-  if (user) {
-    const { data: cardRow } = await supabase
-      .from("cards")
-      .select("id")
-      .eq("game", game)
-      .eq("external_id", externalId)
-      .maybeSingle();
-    if (cardRow) {
-      // RLS already restricts user_cards to the current user, but the explicit
-      // filter is cheap insurance and reads clearly at the call site.
-      const { data } = await supabase
-        .from("user_cards")
-        .select("quantity, variant")
-        .eq("card_id", cardRow.id)
-        .eq("user_id", user.id);
-      for (const row of (data ?? []) as OwnedRow[]) {
-        ownedByVariant[row.variant] = (ownedByVariant[row.variant] ?? 0) + row.quantity;
-      }
+  if (user && detail.internal_id) {
+    // RLS already restricts user_cards to the current user, but the explicit
+    // filter is cheap insurance and reads clearly at the call site.
+    const { data } = await supabase
+      .from("user_cards")
+      .select("quantity, variant")
+      .eq("card_id", detail.internal_id)
+      .eq("user_id", user.id);
+    for (const row of (data ?? []) as OwnedRow[]) {
+      ownedByVariant[row.variant] = (ownedByVariant[row.variant] ?? 0) + row.quantity;
     }
   }
 
@@ -275,6 +288,21 @@ export default async function CardDetailPage({
                 <dt className="text-zinc-500">Mana</dt>
                 <dd className="font-medium">
                   <InlineSymbols text={detail.mana_cost} size={18} />
+                </dd>
+              </>
+            ) : null}
+            {detail.colors !== null ? (
+              <>
+                <dt className="text-zinc-500">Color</dt>
+                <dd className="font-medium">
+                  <InlineSymbols
+                    text={
+                      detail.colors.length > 0
+                        ? detail.colors.map((c) => `{${c}}`).join("")
+                        : "{C}"
+                    }
+                    size={18}
+                  />
                 </dd>
               </>
             ) : null}

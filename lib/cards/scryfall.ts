@@ -12,6 +12,7 @@ export interface ScryfallCard {
   type_line?: string;
   oracle_text?: string;
   mana_cost?: string;
+  colors?: string[]; // subset of ["W","U","B","R","G"]; [] = colorless
   frame?: string;
   set?: string;
   set_name?: string;
@@ -61,6 +62,9 @@ export interface MtgSearchFilters {
   dir?: "asc" | "desc";
 }
 
+// Keep this in sync with the UI options in app/search/page.tsx → MTG_SORTS.
+// Anything in the allowlist that the UI doesn't expose is dead weight that
+// could silently slip into a query via a future refactor.
 const MTG_SORT_FIELDS = new Set([
   "name",
   "cmc",
@@ -68,8 +72,6 @@ const MTG_SORT_FIELDS = new Set([
   "toughness",
   "usd",
   "released",
-  "rarity",
-  "color",
 ]);
 
 function buildScryfallQuery(name: string, f: MtgSearchFilters): string {

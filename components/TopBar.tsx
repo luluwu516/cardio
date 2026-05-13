@@ -1,32 +1,17 @@
-import type { User } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 
-import { createClient } from "@/lib/supabase/server";
 import { TopBarClient } from "./TopBarClient";
 
-// Prefer the OAuth provider's display name (Google fills `full_name` and
-// `name`; we also accept `given_name` as a softer fallback). Email/password
-// signups have an empty user_metadata, so we fall back to the email local
-// part, then to a generic "user" label.
-function pickDisplayName(user: User): string {
-  const meta = user.user_metadata ?? {};
-  const candidates = [meta.full_name, meta.name, meta.given_name];
-  for (const c of candidates) {
-    if (typeof c === "string" && c.trim()) return c.trim();
-  }
-  const email = user.email;
-  if (email) return email.split("@")[0] || email;
-  return "user";
-}
-
-// Async server component: looks up the current user once per page render and
-// hands the display name down to the client component that handles the
-// path-aware visibility and the sign-out form. Returns null on the unauth
-// side so the /login page renders without a stray "Hello, undefined".
+// Read the display name from the request header that proxy.ts / updateSession
+// sets after validating the session. This deliberately avoids a second
+// Supabase auth round-trip on every page render — the middleware already
+// did the auth call, we just consume its result.
+//
+// If the header is absent (anon page request) we render nothing; TopBarClient
+// also self-hides on /login and /auth/* paths.
 export async function TopBar() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  return <TopBarClient name={pickDisplayName(user)} />;
+  const h = await headers();
+  const name = h.get("x-cardio-user-name");
+  if (!name) return null;
+  return <TopBarClient name={name} />;
 }

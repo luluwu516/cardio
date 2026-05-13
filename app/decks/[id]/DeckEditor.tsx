@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
 import { SearchInput } from "@/components/SearchInput";
@@ -129,6 +129,17 @@ export function DeckEditor({
   const trimmed = query.trim();
   const isValid = trimmed.length >= 2;
   const display = isValid ? results : [];
+
+  // Lookup so a search result can show "− N +" with the live in-deck count.
+  // Same map keyed by externalId works for both boards because a card never
+  // straddles main and extra in the same deck (see boardForCard in actions).
+  // Memoised so keystrokes in the search box don't rebuild the map.
+  const inDeckByExt = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of mainCards) m.set(c.externalId, c.inDeck);
+    for (const c of extraCards) m.set(c.externalId, c.inDeck);
+    return m;
+  }, [mainCards, extraCards]);
 
   const missingRows: MissingRow[] = [...mainCards, ...extraCards]
     .map((c) => {
@@ -281,11 +292,18 @@ export function DeckEditor({
         <ul className="space-y-2">
           {display.map((hit) => {
             const key = hit.external_id;
-            const isAdding = busy[key] === "add";
+            const inDeck = inDeckByExt.get(key) ?? 0;
+            const inFlight = !!busy[key];
+            const alreadyInDeck = inDeck > 0;
             return (
               <li
                 key={`${hit.game}:${key}`}
-                className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900"
+                className={
+                  "flex items-center gap-3 rounded-lg border p-2 " +
+                  (alreadyInDeck
+                    ? "border-emerald-500/40 bg-emerald-500/5 dark:border-emerald-400/40 dark:bg-emerald-400/5"
+                    : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900")
+                }
               >
                 <Link
                   href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
@@ -307,17 +325,43 @@ export function DeckEditor({
                     <p className="truncate text-xs text-zinc-500">
                       {hit.type || "—"}
                       {hit.owned > 0 ? ` · owned ${hit.owned}` : ""}
+                      {alreadyInDeck ? (
+                        <span className="text-emerald-700 dark:text-emerald-300">
+                          {" "}
+                          · in deck {inDeck}
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 </Link>
-                <button
-                  onClick={() => adjust(hit.external_id, +1)}
-                  disabled={!!busy[key]}
-                  aria-label="Add to deck"
-                  className="h-8 w-10 shrink-0 rounded-md border border-zinc-300 text-sm font-medium hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                >
-                  {isAdding ? "…" : "+"}
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => adjust(hit.external_id, -1)}
+                    disabled={inFlight || inDeck === 0}
+                    aria-label="Remove one from deck"
+                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    −
+                  </button>
+                  <span
+                    className={
+                      "w-6 text-center text-sm font-medium tabular-nums " +
+                      (alreadyInDeck
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-zinc-400")
+                    }
+                  >
+                    {inDeck}
+                  </span>
+                  <button
+                    onClick={() => adjust(hit.external_id, +1)}
+                    disabled={inFlight}
+                    aria-label="Add to deck"
+                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    +
+                  </button>
+                </div>
               </li>
             );
           })}

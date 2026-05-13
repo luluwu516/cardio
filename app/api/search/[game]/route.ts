@@ -34,6 +34,7 @@ function readYgoFilters(p: URLSearchParams): YgoSearchFilters {
     type: p.get("type") ?? undefined,
     attribute: p.get("attribute") ?? undefined,
     race: p.get("race") ?? undefined,
+    level: intParam(p.get("level")),
     atkMin: intParam(p.get("atkMin")),
     atkMax: intParam(p.get("atkMax")),
     defMin: intParam(p.get("defMin")),

@@ -10,6 +10,7 @@ import {
   mtgVariantsFromRaw,
   ygoVariantsFromRaw,
 } from "@/lib/cards/variants";
+import { pickMtgColors, pickSetInfo } from "@/lib/cards/rawFields";
 import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
 import type { Game } from "@/lib/cards/types";
 import { BackButton } from "@/components/BackButton";
@@ -49,31 +50,6 @@ interface CardDetail {
   variants: string[];
 }
 
-function readMtgColors(raw: Record<string, unknown>): string[] {
-  const c = raw.colors;
-  if (!Array.isArray(c)) return [];
-  return c.filter((x): x is string => typeof x === "string");
-}
-
-function pickSetFromRaw(
-  game: Game,
-  raw: Record<string, unknown>,
-): { set_name: string | null; set_query: string | null } {
-  if (game === "MTG") {
-    const name = typeof raw.set_name === "string" ? raw.set_name : null;
-    const code = typeof raw.set === "string" ? raw.set : null;
-    return { set_name: name ?? code, set_query: code };
-  }
-  const sets = Array.isArray(raw.card_sets)
-    ? (raw.card_sets as Array<Record<string, unknown>>)
-    : [];
-  const first = sets[0];
-  const name =
-    first && typeof first.set_name === "string"
-      ? (first.set_name as string)
-      : null;
-  return { set_name: name, set_query: name };
-}
 
 async function loadFromCards(
   supabase: ReturnType<typeof createClient> extends Promise<infer S> ? S : never,
@@ -88,7 +64,7 @@ async function loadFromCards(
     .maybeSingle();
   if (!data) return null;
   const raw = (data.raw ?? {}) as Record<string, unknown>;
-  const setInfo = pickSetFromRaw(game, raw);
+  const setInfo = pickSetInfo(game, raw);
   const variants =
     game === "YGO" ? ygoVariantsFromRaw(raw) : mtgVariantsFromRaw(raw);
   return {
@@ -100,7 +76,7 @@ async function loadFromCards(
     description: data.description,
     image_url: data.image_url,
     mana_cost: data.mana_cost,
-    colors: game === "MTG" ? readMtgColors(raw) : null,
+    colors: game === "MTG" ? pickMtgColors(raw) : null,
     attribute: data.attribute,
     atk: typeof raw.atk === "number" ? (raw.atk as number) : null,
     def: typeof raw.def === "number" ? (raw.def as number) : null,

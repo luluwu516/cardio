@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
-import type { Game, SearchHit } from "@/lib/cards/types";
+import { parseGameParam, type Game, type SearchHit } from "@/lib/cards/types";
 import {
   filtersForGame,
   hasAnyFilter,
@@ -13,6 +13,7 @@ import {
   writeFiltersToParams,
   type SearchFilters,
 } from "@/lib/cards/filters";
+import { MTG_COLOR_CHIPS, toggleColor as toggleColorChip } from "@/lib/cards/mtgColors";
 import { SearchInput } from "@/components/SearchInput";
 
 const GAMES: Game[] = ["YGO", "MTG"];
@@ -80,7 +81,6 @@ const MTG_TYPES = [
   "Land",
   "Battle",
 ];
-const MTG_COLORS = ["W", "U", "B", "R", "G", "C"] as const;
 const MTG_SORTS: Array<{ value: string; label: string }> = [
   { value: "", label: "Relevance" },
   { value: "name:asc", label: "Name ↑" },
@@ -106,9 +106,6 @@ function keyOf(hit: { game: Game; external_id: string }): string {
   return `${hit.game}:${hit.external_id}`;
 }
 
-function parseGameParam(v: string | null): Game {
-  return v === "MTG" ? "MTG" : "YGO";
-}
 
 function SearchInner() {
   const router = useRouter();
@@ -240,18 +237,7 @@ function SearchInner() {
 
   function toggleColor(c: string) {
     setFilters((prev) => {
-      const current = prev.colors ?? "";
-      const has = current.includes(c);
-      // Colorless is mutually exclusive with WUBRG. Picking C wipes others;
-      // picking a colored chip while C is set drops the C.
-      let nextStr: string;
-      if (c === "C") {
-        nextStr = has ? "" : "C";
-      } else if (current.includes("C")) {
-        nextStr = c;
-      } else {
-        nextStr = has ? current.replace(c, "") : current + c;
-      }
+      const nextStr = toggleColorChip(prev.colors ?? "", c);
       const next = { ...prev };
       if (nextStr) next.colors = nextStr;
       else delete next.colors;
@@ -505,19 +491,27 @@ function YgoFilterPanel({
           ))}
         </select>
       </FilterField>
-      <div className="col-span-2 sm:col-span-1">
-        <FilterField label="Race">
-          <input
-            type="text"
-            value={filters.race ?? ""}
-            onChange={(e) => onField("race", e.target.value || undefined)}
-            placeholder="e.g. Dragon"
-            className={inputCls}
-          />
-        </FilterField>
-      </div>
-      {/* sm+ spacer so Set / Keyword open a fresh row on desktop. */}
-      <div className="hidden sm:block" aria-hidden />
+      <FilterField label="Race">
+        <input
+          type="text"
+          value={filters.race ?? ""}
+          onChange={(e) => onField("race", e.target.value || undefined)}
+          placeholder="e.g. Dragon"
+          className={inputCls}
+        />
+      </FilterField>
+      <FilterField label="Level">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={12}
+          value={filters.level ?? ""}
+          onChange={(e) => onField("level", e.target.value || undefined)}
+          placeholder="0–12"
+          className={inputCls}
+        />
+      </FilterField>
       <FilterField label="Set">
         <input
           type="text"
@@ -635,7 +629,7 @@ function MtgFilterPanel({
       <div className="col-span-2 sm:col-span-4">
         <FilterField label="Colors">
           <div className="flex gap-1">
-            {MTG_COLORS.map((c) => {
+            {MTG_COLOR_CHIPS.map((c) => {
               const active = colors.includes(c);
               return (
                 <button

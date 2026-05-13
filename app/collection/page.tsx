@@ -2,28 +2,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
-import { CollectionList, type CollectionRow } from "./CollectionList";
-
-// Pull the most useful printing-set name out of the cached external payload.
-// MTG → top-level set_name. YGO → first card_sets entry.
-function pickSet(game: string, raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  if (game === "MTG") {
-    return typeof r.set_name === "string"
-      ? r.set_name
-      : typeof r.set === "string"
-        ? r.set
-        : null;
-  }
-  const sets = Array.isArray(r.card_sets)
-    ? (r.card_sets as Array<Record<string, unknown>>)
-    : [];
-  const first = sets[0];
-  return first && typeof first.set_name === "string"
-    ? (first.set_name as string)
-    : null;
-}
+import {
+  pickMtgColors,
+  pickSetName,
+  pickYgoLevel,
+  pickYgoRace,
+} from "@/lib/cards/rawFields";
+import { CollectionList } from "./CollectionList";
+import type { CollectionRow } from "./types";
 
 interface RawJoin {
   id: string;
@@ -37,6 +23,8 @@ interface RawJoin {
     name: string;
     type: string | null;
     image_url: string | null;
+    description: string | null;
+    attribute: string | null;
     raw: unknown;
   } | null;
 }
@@ -46,7 +34,7 @@ export default async function CollectionPage() {
   const { data, error } = await supabase
     .from("user_cards")
     .select(
-      "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, raw)",
+      "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, description, attribute, raw)",
     );
 
   // Sort client-side: PostgREST can't order the top-level rows by a column on
@@ -67,7 +55,12 @@ export default async function CollectionPage() {
             name: r.card.name,
             type: r.card.type,
             image_url: r.card.image_url,
-            set: pickSet(r.card.game, r.card.raw),
+            set: pickSetName(r.card.game, r.card.raw),
+            description: r.card.description,
+            attribute: r.card.attribute,
+            race: r.card.game === "YGO" ? pickYgoRace(r.card.raw) : null,
+            level: r.card.game === "YGO" ? pickYgoLevel(r.card.raw) : null,
+            colors: r.card.game === "MTG" ? pickMtgColors(r.card.raw) : [],
           }
         : null,
     }))

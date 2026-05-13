@@ -76,6 +76,12 @@ grant select, insert, update, delete on public.user_cards  to authenticated;
 grant select, insert, update, delete on public.decks       to authenticated;
 grant select, insert, update, delete on public.deck_cards  to authenticated;
 
+-- cards is shared, public-read master data. The /api/health endpoint
+-- (Vercel Cron, no auth cookie) hits it as the `anon` role to keep the
+-- Supabase project from auto-pausing on the free tier. Without this grant,
+-- Postgres rejects the SELECT at the table level before RLS even runs.
+grant select on public.cards to anon;
+
 -- ============================================================
 -- Row Level Security
 -- ============================================================

@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { BackButton } from "@/components/BackButton";
+import { getScryfallById } from "@/lib/cards/scryfall";
 import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
+import { getYgoById } from "@/lib/cards/ygoprodeck";
 import type { Game } from "@/lib/cards/types";
 import { deleteDeck, renameDeck } from "../actions";
 import { DeckEditor, type DeckCardDisplay } from "./DeckEditor";
@@ -158,11 +160,46 @@ export default async function DeckEditorPage({
     }
   }
 
+  // Round-trip 4: refetch live card payloads for the rows that will land on
+  // the buylist (inDeck > owned). cards.raw is frozen at first cache write —
+  // could be months old by the time the user opens this deck — and prices
+  // are the only thing that genuinely needs to be fresh. We skip cards the
+  // user already has enough of: their prices don't enter the CSV. Both
+  // getters use next.revalidate=3600, so repeat opens within an hour stay
+  // free.
+  const freshRawByExt = new Map<string, unknown>();
+  const missingFetches = deckCards
+    .filter((dc) => {
+      if (!dc.card) return false;
+      return dc.quantity > (ownedByCard.get(dc.card.id) ?? 0);
+    })
+    .map(async (dc) => {
+      const c = dc.card!;
+      try {
+        if (c.game === "MTG") {
+          const fresh = await getScryfallById(c.external_id);
+          return { ext: c.external_id, raw: fresh as unknown };
+        }
+        const fresh = await getYgoById(c.external_id);
+        return fresh ? { ext: c.external_id, raw: fresh as unknown } : null;
+      } catch {
+        // Network / upstream hiccup → fall back to the cached raw below.
+        return null;
+      }
+    });
+  for (const r of await Promise.all(missingFetches)) {
+    if (r) freshRawByExt.set(r.ext, r.raw);
+  }
+
   function toDisplay(dc: JoinedDeckCard): DeckCardDisplay | null {
     if (!dc.card) return null;
     const c = dc.card;
     const banTcg = c.game === "YGO" ? ygoBanlist.get(c.external_id) ?? null : null;
-    const price = extractPriceInfo(c.game, c.name, c.raw);
+    // Fresh payload if we refetched it above; cached raw otherwise. Cards
+    // not on the buylist never read their price, so the staleness on the
+    // fallback path is harmless.
+    const rawForPrice = freshRawByExt.get(c.external_id) ?? c.raw;
+    const price = extractPriceInfo(c.game, c.name, rawForPrice);
     return {
       cardId: c.id,
       externalId: c.external_id,

@@ -20,7 +20,10 @@ export function BottomTabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-black/95"
+      // pb-[env(...)] adds the iOS home-indicator height (34px in standalone
+      // PWA mode, 0 in a normal browser) so the tab labels aren't cut off.
+      // Requires viewportFit: "cover" in app/layout.tsx's viewport export.
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-zinc-800 dark:bg-black/95"
     >
       <ul className="mx-auto flex w-full max-w-3xl">
         {TABS.map((t) => {

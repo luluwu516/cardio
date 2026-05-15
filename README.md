@@ -1,18 +1,18 @@
-# CardIO
+# cardIO
 
 A personal YGO / MTG card collection web app (PWA in the future) — multi-user, with deck building and buylist export.
 
 
 ## Overview
 
-**CardIO** is a personal collection-management system for Yu-Gi-Oh! and Magic: The Gathering players. It could look up cards through the [Scryfall](https://scryfall.com) and [YGOPRODeck](https://ygoprodeck.com) APIs, and add them to your collection in one click. The collection reflects multiple variants per card (YGO rarities, MTG nonfoil/foil/etched). The deck builder **searches your collection first**, then falls back to external search for the rest, and exports the "missing cards" as a CSV with TCGPlayer search links and live price estimates — take it straight to a store or shop online.
+**cardIO** is a personal collection-management system for Yu-Gi-Oh! and Magic: The Gathering players. It could look up cards through the [Scryfall](https://scryfall.com) and [YGOPRODeck](https://ygoprodeck.com) APIs, and add them to your collection in one click. The collection reflects multiple variants per card (YGO rarities, MTG nonfoil/foil/etched). The deck builder **searches your collection first**, then falls back to external search for the rest, and exports the "missing cards" as a CSV with TCGPlayer search links and live price estimates — take it straight to a store or shop online.
 
 The whole app is deployed on Vercel + Supabase. One codebase, mobile and desktop browsers.
 
 ## Motivation
 
 Most card tools sit at one of two extremes: encyclopedic lookup or deck-sharing communities (Scryfall / YGOPRODeck). The middle ground — *my* inventory and how it relates to *my* deck ideas — is empty. I decided to build a collection-management system for my cards.
-It has to be an encyclopedia, an inventory, and a deck builder all at once. The user can access it on a desktop and also on a mobile device. And here is the **CardIO**.
+It has to be an encyclopedia, an inventory, and a deck builder all at once. The user can access it on a desktop and also on a mobile device. And here is the **cardIO**.
 
 
 ## Features
@@ -90,7 +90,7 @@ Modify any field, then press **Apply** to run the search or **Reset** to clear e
 
 On `/collection`:
 
-![Collection](./img/collection.png)
+![Collection](./img/Collection.png)
 
 1. Game tabs at the top toggle YGO / MTG
 2. **Export YGO CSV** / **Export MTG CSV** in the top-right does full-collection dumps

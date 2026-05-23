@@ -6,7 +6,6 @@
 // available either at card-load time (detail page) or via the `raw` jsonb
 // blob cached on the cards row, so callers pass whichever they have.
 
-import type { Game } from "./types";
 import type { ScryfallCard } from "./scryfall";
 import type { YgoCard } from "./ygoprodeck";
 
@@ -92,11 +91,4 @@ export function ygoVariantsFromRaw(raw: unknown): string[] {
 export function mtgVariantsFromRaw(raw: unknown): string[] {
   if (!raw || typeof raw !== "object") return ["Nonfoil"];
   return mtgVariantsForCard(raw as ScryfallCard);
-}
-
-/** First variant in the canonical display order — used as the auto-pick when
- *  Search's "Add" button lands on the detail page. */
-export function defaultVariant(game: Game, variants: string[]): string {
-  if (variants.length === 0) return game === "YGO" ? "Common" : "Nonfoil";
-  return variants[0];
 }

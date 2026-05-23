@@ -123,7 +123,11 @@ export function DeckEditor({
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<Record<string, "add" | "sub">>({});
+  // Uncommitted +/− deltas keyed by externalId, shared between the search
+  // results row and the board rows so the same card adjusted in either place
+  // accumulates into one Confirm.
+  const [pending, setPending] = useState<Record<string, number>>({});
+  const [committing, setCommitting] = useState<Record<string, boolean>>({});
   const [, startTransition] = useTransition();
 
   const trimmed = query.trim();
@@ -201,18 +205,42 @@ export function DeckEditor({
   }, [trimmed, mode, deckGame, isValid]);
 
   function adjust(externalId: string, sign: 1 | -1) {
-    const key = externalId;
-    if (busy[key]) return;
-    setBusy((b) => ({ ...b, [key]: sign > 0 ? "add" : "sub" }));
+    if (committing[externalId]) return;
+    const committedQty = inDeckByExt.get(externalId) ?? 0;
+    setPending((p) => {
+      const cur = p[externalId] ?? 0;
+      const next = cur + sign;
+      // Clamp so display can't go below 0.
+      if (committedQty + next < 0) return p;
+      const out = { ...p };
+      if (next === 0) delete out[externalId];
+      else out[externalId] = next;
+      return out;
+    });
+  }
+
+  function confirm(externalId: string) {
+    const delta = pending[externalId] ?? 0;
+    if (delta === 0 || committing[externalId]) return;
+    setCommitting((c) => ({ ...c, [externalId]: true }));
+    // Clear pending optimistically so once server revalidation updates the
+    // props the row's display matches. Restore on failure.
+    setPending((p) => {
+      const next = { ...p };
+      delete next[externalId];
+      return next;
+    });
+    setError(null);
     startTransition(async () => {
       try {
-        await changeDeckCardQuantity(deckId, deckGame, externalId, sign);
+        await changeDeckCardQuantity(deckId, deckGame, externalId, delta);
       } catch (e) {
+        setPending((p) => ({ ...p, [externalId]: delta }));
         setError((e as Error).message);
       } finally {
-        setBusy((b) => {
-          const next = { ...b };
-          delete next[key];
+        setCommitting((c) => {
+          const next = { ...c };
+          delete next[externalId];
           return next;
         });
       }
@@ -293,8 +321,11 @@ export function DeckEditor({
           {display.map((hit) => {
             const key = hit.external_id;
             const inDeck = inDeckByExt.get(key) ?? 0;
-            const inFlight = !!busy[key];
-            const alreadyInDeck = inDeck > 0;
+            const delta = pending[key] ?? 0;
+            const dirty = delta !== 0;
+            const isCommitting = !!committing[key];
+            const displayQty = Math.max(0, inDeck + delta);
+            const alreadyInDeck = displayQty > 0;
             return (
               <li
                 key={`${hit.game}:${key}`}
@@ -328,7 +359,7 @@ export function DeckEditor({
                       {alreadyInDeck ? (
                         <span className="text-emerald-700 dark:text-emerald-300">
                           {" "}
-                          · in deck {inDeck}
+                          · in deck {displayQty}
                         </span>
                       ) : null}
                     </p>
@@ -337,7 +368,7 @@ export function DeckEditor({
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={() => adjust(hit.external_id, -1)}
-                    disabled={inFlight || inDeck === 0}
+                    disabled={isCommitting || displayQty === 0}
                     aria-label="Remove one from deck"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
@@ -346,20 +377,27 @@ export function DeckEditor({
                   <span
                     className={
                       "w-6 text-center text-sm font-medium tabular-nums " +
-                      (alreadyInDeck
-                        ? "text-emerald-700 dark:text-emerald-300"
+                      (displayQty > 0
+                        ? "text-zinc-900 dark:text-zinc-100"
                         : "text-zinc-400")
                     }
                   >
-                    {inDeck}
+                    {displayQty}
                   </span>
                   <button
                     onClick={() => adjust(hit.external_id, +1)}
-                    disabled={inFlight}
+                    disabled={isCommitting}
                     aria-label="Add to deck"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
                     +
+                  </button>
+                  <button
+                    onClick={() => confirm(hit.external_id)}
+                    disabled={!dirty || isCommitting}
+                    className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  >
+                    {isCommitting ? "Saving…" : "Confirm"}
                   </button>
                 </div>
               </li>
@@ -371,16 +409,20 @@ export function DeckEditor({
       <BoardSection
         title="Main"
         cards={mainCards}
-        busy={busy}
+        pending={pending}
+        committing={committing}
         onAdjust={adjust}
+        onConfirm={confirm}
         bounds={deckGame === "YGO" ? YGO_BOUNDS.main : null}
       />
       {deckGame === "YGO" ? (
         <BoardSection
           title="Extra"
           cards={extraCards}
-          busy={busy}
+          pending={pending}
+          committing={committing}
           onAdjust={adjust}
+          onConfirm={confirm}
           bounds={YGO_BOUNDS.extra}
           emptyHint="Fusion / Synchro / Xyz / Link monsters land here automatically."
         />
@@ -392,15 +434,19 @@ export function DeckEditor({
 function BoardSection({
   title,
   cards,
-  busy,
+  pending,
+  committing,
   onAdjust,
+  onConfirm,
   bounds,
   emptyHint = "No cards yet. Use the search above to add.",
 }: {
   title: string;
   cards: DeckCardDisplay[];
-  busy: Record<string, "add" | "sub">;
+  pending: Record<string, number>;
+  committing: Record<string, boolean>;
   onAdjust: (externalId: string, sign: 1 | -1) => void;
+  onConfirm: (externalId: string) => void;
   bounds: BoardBounds | null;
   emptyHint?: string;
 }) {
@@ -443,7 +489,10 @@ function BoardSection({
         <ul className="space-y-2">
           {cards.map((dc) => {
             const missing = Math.max(0, dc.inDeck - dc.owned);
-            const inFlight = !!busy[dc.externalId];
+            const delta = pending[dc.externalId] ?? 0;
+            const dirty = delta !== 0;
+            const isCommitting = !!committing[dc.externalId];
+            const displayQty = Math.max(0, dc.inDeck + delta);
             const hasViolation = !!dc.violation;
             return (
               <li
@@ -491,22 +540,34 @@ function BoardSection({
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={() => onAdjust(dc.externalId, -1)}
-                    disabled={inFlight}
+                    disabled={isCommitting || displayQty === 0}
                     aria-label="Decrease"
-                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
                     −
                   </button>
-                  <span className="w-6 text-center text-sm font-medium tabular-nums">
-                    {dc.inDeck}
+                  <span
+                    className={
+                      "w-6 text-center text-sm font-medium tabular-nums " +
+                      (dirty ? "text-zinc-900 dark:text-zinc-100" : "")
+                    }
+                  >
+                    {displayQty}
                   </span>
                   <button
                     onClick={() => onAdjust(dc.externalId, +1)}
-                    disabled={inFlight}
+                    disabled={isCommitting}
                     aria-label="Increase"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
                     +
+                  </button>
+                  <button
+                    onClick={() => onConfirm(dc.externalId)}
+                    disabled={!dirty || isCommitting}
+                    className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  >
+                    {isCommitting ? "Saving…" : "Confirm"}
                   </button>
                 </div>
               </li>

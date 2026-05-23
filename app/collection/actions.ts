@@ -14,9 +14,7 @@ async function requireUser() {
   return { supabase, user };
 }
 
-export async function changeQuantity(formData: FormData) {
-  const id = formData.get("id") as string;
-  const delta = Number(formData.get("delta") ?? 0);
+export async function changeQuantity(id: string, delta: number) {
   if (!id || !Number.isFinite(delta) || delta === 0) return;
 
   const { supabase, user } = await requireUser();
@@ -35,19 +33,6 @@ export async function changeQuantity(formData: FormData) {
   } else {
     await supabase.from("user_cards").update({ quantity: next }).eq("id", id);
   }
-  revalidatePath("/collection");
-  revalidatePath("/cards", "layout");
-}
-
-export async function removeFromCollection(formData: FormData) {
-  const id = formData.get("id") as string;
-  if (!id) return;
-  const { supabase, user } = await requireUser();
-  await supabase
-    .from("user_cards")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
   revalidatePath("/collection");
   revalidatePath("/cards", "layout");
 }

@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getScryfallById, scryfallImage } from "@/lib/cards/scryfall";
 import { getYgoById, ygoImage } from "@/lib/cards/ygoprodeck";
 import {
-  defaultVariant,
   mtgVariantsFromRaw,
   ygoVariantsFromRaw,
 } from "@/lib/cards/variants";
@@ -328,7 +327,6 @@ export default async function CardDetailPage({
         variants={detail.variants}
         initialOwned={ownedByVariant}
         autoOpen={autoOpen}
-        defaultVariant={defaultVariant(detail.game, detail.variants)}
       />
 
       {detail.tcgplayer_url ? (

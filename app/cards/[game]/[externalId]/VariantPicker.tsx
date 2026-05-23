@@ -11,11 +11,11 @@ interface Props {
   variants: string[];
   /** Initial owned quantity keyed by variant name. */
   initialOwned: Record<string, number>;
-  /** Open the picker on mount with `defaultVariant` pre-incremented (+1) but
-   *  unconfirmed — used when the user clicks "Add" from the search results
-   *  page (`?action=add`). */
+  /** Open the picker on mount — used when the user clicks "Add" from the
+   *  search results page (`?action=add`). All variants start at the user's
+   *  current owned quantity; nothing is pre-incremented so the user picks
+   *  which rarity/finish to bump. */
   autoOpen: boolean;
-  defaultVariant: string;
 }
 
 export function VariantPicker({
@@ -24,7 +24,6 @@ export function VariantPicker({
   variants,
   initialOwned,
   autoOpen,
-  defaultVariant,
 }: Props) {
   const initialTotal = Object.values(initialOwned).reduce(
     (s, n) => s + n,
@@ -32,9 +31,7 @@ export function VariantPicker({
   );
 
   const [owned, setOwned] = useState<Record<string, number>>(initialOwned);
-  const [pending, setPending] = useState<Record<string, number>>(() =>
-    autoOpen && initialTotal === 0 ? { [defaultVariant]: 1 } : {},
-  );
+  const [pending, setPending] = useState<Record<string, number>>({});
   const [committing, setCommitting] = useState<Record<string, boolean>>({});
   const [open, setOpen] = useState<boolean>(autoOpen || initialTotal > 0);
   const [error, setError] = useState<string | null>(null);
@@ -93,10 +90,7 @@ export function VariantPicker({
         </p>
         {!open ? (
           <button
-            onClick={() => {
-              setOpen(true);
-              setPending({ [defaultVariant]: 1 });
-            }}
+            onClick={() => setOpen(true)}
             className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
           >
             Add
@@ -136,11 +130,9 @@ export function VariantPicker({
                   <span
                     className={
                       "w-7 text-center text-sm font-medium tabular-nums " +
-                      (dirty
+                      (display > 0
                         ? "text-zinc-900 dark:text-zinc-100"
-                        : ownedQty > 0
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-zinc-400")
+                        : "text-zinc-400")
                     }
                   >
                     {display}

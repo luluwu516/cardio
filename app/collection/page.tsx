@@ -29,19 +29,40 @@ interface RawJoin {
   } | null;
 }
 
+// PostgREST caps each request at 1000 rows by default (Supabase managed
+// instances). Users with bigger collections lose rows past that cap silently —
+// the page-level filter/sort runs client-side over whatever subset survived,
+// so missing rows just disappear from search results. Loop in 1000-row chunks,
+// ordered by `id` so each window is disjoint and stable.
+const FETCH_CHUNK = 1000;
+const SELECT_COLS =
+  "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, description, attribute, raw)";
+
 export default async function CollectionPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("user_cards")
-    .select(
-      "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, description, attribute, raw)",
-    );
+
+  const allRows: RawJoin[] = [];
+  let error: { message: string } | null = null;
+  for (let from = 0; ; from += FETCH_CHUNK) {
+    const { data, error: chunkError } = await supabase
+      .from("user_cards")
+      .select(SELECT_COLS)
+      .order("id", { ascending: true })
+      .range(from, from + FETCH_CHUNK - 1);
+    if (chunkError) {
+      error = chunkError;
+      break;
+    }
+    const chunk = (data ?? []) as unknown as RawJoin[];
+    allRows.push(...chunk);
+    if (chunk.length < FETCH_CHUNK) break;
+  }
 
   // Sort client-side: PostgREST can't order the top-level rows by a column on
   // an embedded relation, and we want the same card's variants (e.g. Foil +
   // Nonfoil of one printing) to sit next to each other rather than being
   // scattered by insertion time.
-  const rows: CollectionRow[] = ((data ?? []) as unknown as RawJoin[])
+  const rows: CollectionRow[] = allRows
     .map((r) => ({
       id: r.id,
       quantity: r.quantity,

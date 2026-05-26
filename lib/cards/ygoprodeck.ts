@@ -105,13 +105,13 @@ function findMatchingArchetype(
   return null;
 }
 
-function buildBaseYgoParams(
-  filters: YgoSearchFilters,
-  wireLimit: number,
-): URLSearchParams {
+function buildBaseYgoParams(filters: YgoSearchFilters): URLSearchParams {
   const params = new URLSearchParams();
-  params.set("num", String(wireLimit));
-  params.set("offset", "0");
+  // YGOPRODeck's `num` / `offset` parameters are currently broken upstream:
+  // pairing them with `fname`, `archetype`, or even a plain `type` filter
+  // returns HTTP 500 for nearly every query (verified 2026-05-26). Their
+  // fname-only and filter-only result sets are bounded enough that we just
+  // pull them whole and slice on our side.
   if (filters.type) params.set("type", filters.type);
   if (filters.attribute) params.set("attribute", filters.attribute);
   if (filters.race) params.set("race", filters.race);
@@ -144,13 +144,7 @@ export async function searchYgo(
   limit = 20,
   filters: YgoSearchFilters = {},
 ): Promise<YgoCard[]> {
-  // Over-fetch when post-filtering ATK / DEF max bounds since the upstream
-  // API only accepts a single comparator per field.
-  const needsPostFilter =
-    filters.atkMax !== undefined || filters.defMax !== undefined;
-  const wireLimit = needsPostFilter ? Math.max(limit * 4, 80) : limit;
-
-  const baseParams = buildBaseYgoParams(filters, wireLimit);
+  const baseParams = buildBaseYgoParams(filters);
 
   // Fname request: by-name fuzzy search.
   const fnamePromise: Promise<YgoCard[]> = (async () => {

@@ -118,7 +118,11 @@ export function DeckEditor({
   mainCards: DeckCardDisplay[];
   extraCards: DeckCardDisplay[];
 }) {
+  // Draft (live input) vs committed (drives the fetch) — same model as the
+  // /search page. Both modes wait for an explicit submit so a single Enter /
+  // Search press always produces one request; nothing races as the user types.
   const [query, setQuery] = useState("");
+  const [committedQuery, setCommittedQuery] = useState("");
   const [mode, setMode] = useState<Mode>("owned");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,9 +134,21 @@ export function DeckEditor({
   const [committing, setCommitting] = useState<Record<string, boolean>>({});
   const [, startTransition] = useTransition();
 
-  const trimmed = query.trim();
+  // Clearing the input shouldn't keep showing the prior search's results.
+  // Mask the committed query whenever the live input is empty rather than
+  // writing back to state from an effect (which lint flags as cascading
+  // renders). Old results stay in `results` until a new fetch replaces them;
+  // `display` below already hides them when isValid is false.
+  const effectiveCommitted = query.length === 0 ? "" : committedQuery;
+  const trimmed = effectiveCommitted.trim();
   const isValid = trimmed.length >= 2;
+  const canSubmit = query.trim().length >= 2;
   const display = isValid ? results : [];
+
+  const searchPlaceholder =
+    deckGame === "YGO"
+      ? "Search YGO (e.g. Blue-Eyes White Dragon)"
+      : "Search MTG (e.g. Black Lotus)";
 
   // Lookup so a search result can show "− N +" with the live in-deck count.
   // Same map keyed by externalId works for both boards because a card never
@@ -172,7 +188,7 @@ export function DeckEditor({
   useEffect(() => {
     if (!isValid) return;
     const ctrl = new AbortController();
-    const t = setTimeout(async () => {
+    (async () => {
       setLoading(true);
       setError(null);
       try {
@@ -197,12 +213,24 @@ export function DeckEditor({
       } finally {
         setLoading(false);
       }
-    }, 300);
-    return () => {
-      clearTimeout(t);
-      ctrl.abort();
-    };
+    })();
+    return () => ctrl.abort();
   }, [trimmed, mode, deckGame, isValid]);
+
+  function submitSearch() {
+    if (!canSubmit) return;
+    setCommittedQuery(query);
+  }
+
+  function handleModeChange(next: Mode) {
+    if (next === mode) return;
+    setMode(next);
+    // Clear committed so the previous mode's results don't linger; the user
+    // explicitly re-presses Search to query the new mode.
+    setCommittedQuery("");
+    setResults([]);
+    setError(null);
+  }
 
   function adjust(externalId: string, sign: 1 | -1) {
     if (committing[externalId]) return;
@@ -270,17 +298,30 @@ export function DeckEditor({
       ) : null}
 
       <section className="mb-5">
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search cards to add"
-          className="mb-2"
-        />
+        <div className="mb-2 flex items-stretch gap-2">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitSearch();
+            }}
+            placeholder={searchPlaceholder}
+            className="flex-1"
+          />
+          <button
+            type="button"
+            onClick={submitSearch}
+            disabled={!canSubmit}
+            className="shrink-0 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            Search
+          </button>
+        </div>
         <div className="mb-2 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
           {(["owned", "all"] as Mode[]).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => handleModeChange(m)}
               className={
                 "rounded px-3 py-1 text-xs font-medium transition-colors " +
                 (mode === m

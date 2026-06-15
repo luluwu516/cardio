@@ -15,12 +15,13 @@ import {
   type YgoSearchFilters,
 } from "@/lib/cards/ygoprodeck";
 import { applyAlias, aliasesMatching } from "@/lib/cards/aliases";
-import { MAX_SEARCH_RESULTS, type Game, type SearchHit } from "@/lib/cards/types";
+import {
+  isGame,
+  MAX_SEARCH_RESULTS,
+  type Game,
+  type SearchHit,
+} from "@/lib/cards/types";
 import { createClient } from "@/lib/supabase/server";
-
-function isGame(g: string): g is Game {
-  return g === "YGO" || g === "MTG";
-}
 
 function intParam(value: string | null): number | undefined {
   if (!value) return undefined;

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { mtgPrimaryType } from "@/lib/cards/rawFields";
 import { parseGameParam, type Game } from "@/lib/cards/types";
+import { csvEscape, downloadBlob, ymd } from "@/lib/csv";
 
 import { AdvancedPanel } from "./AdvancedPanel";
 import { CollectionItem } from "./CollectionItem";
@@ -18,18 +19,7 @@ import type {
 
 const PAGE_SIZE = 20;
 
-// ─── CSV export utilities ───────────────────────────────────────────────────
-
-function csvEscape(value: string | number | null): string {
-  if (value === null || value === undefined) return "";
-  const s = String(value);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-function ymd(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-}
+// ─── CSV export ──────────────────────────────────────────────────────────────
 
 const CSV_HEADER = [
   "game",
@@ -61,18 +51,6 @@ function buildCollectionCsv(rows: CollectionRow[]): string {
     );
   }
   return lines.join("\n");
-}
-
-function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 // ─── Sort / filter helpers ──────────────────────────────────────────────────

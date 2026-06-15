@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
+import { csvEscape, downloadBlob, safeFilename, ymd } from "@/lib/csv";
 import { SearchInput } from "@/components/SearchInput";
 import { changeDeckCardQuantity } from "../actions";
 
@@ -34,26 +35,6 @@ const YGO_BOUNDS: { main: BoardBounds; extra: BoardBounds } = {
 };
 
 type Mode = "owned" | "all";
-
-function csvEscape(value: string | number): string {
-  const s = String(value);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-function safeFilename(name: string): string {
-  return (
-    name
-      .normalize("NFKD")
-      .replace(/[^A-Za-z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "deck"
-  );
-}
-
-function ymd(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-}
 
 interface MissingRow {
   game: Game;
@@ -91,18 +72,6 @@ function buildMissingCsv(rows: MissingRow[]): { csv: string; total: number } {
   }
   lines.push(["", "TOTAL", "", "", "", total.toFixed(2)].join(","));
   return { csv: lines.join("\n"), total };
-}
-
-function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 export function DeckEditor({
@@ -181,7 +150,7 @@ export function DeckEditor({
 
   function handleExport() {
     const { csv } = buildMissingCsv(missingRows);
-    const filename = `cardio-buylist-${safeFilename(deckName)}-${ymd(new Date())}.csv`;
+    const filename = `cardio-buylist-${safeFilename(deckName, "deck")}-${ymd(new Date())}.csv`;
     downloadBlob(csv, filename, "text/csv;charset=utf-8");
   }
 

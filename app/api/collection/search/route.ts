@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { applyAlias, aliasesMatching } from "@/lib/cards/aliases";
-import { MAX_SEARCH_RESULTS, type Game, type SearchHit } from "@/lib/cards/types";
-
-function isGame(g: string): g is Game {
-  return g === "YGO" || g === "MTG";
-}
+import {
+  isGame,
+  MAX_SEARCH_RESULTS,
+  type Game,
+  type SearchHit,
+} from "@/lib/cards/types";
 
 interface JoinedRow {
   quantity: number;

@@ -11,6 +11,13 @@ export function parseGameParam(v: string | null): Game {
   return v === "MTG" ? "MTG" : "YGO";
 }
 
+// Strict guard for route params / request input that must be a valid Game.
+// Unlike parseGameParam this rejects unknown values rather than defaulting,
+// so endpoints can 404 / 400 on a bad `game` segment.
+export function isGame(g: string): g is Game {
+  return g === "YGO" || g === "MTG";
+}
+
 // Upper bound on cards returned from any single search endpoint
 // (/api/search/[game] and /api/collection/search). Centralised so both stay
 // in lockstep with the search UI grid.

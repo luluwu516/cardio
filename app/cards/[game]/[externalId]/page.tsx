@@ -12,14 +12,10 @@ import {
 import { applyAlias } from "@/lib/cards/aliases";
 import { pickMtgColors, pickSetInfo } from "@/lib/cards/rawFields";
 import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
-import type { Game } from "@/lib/cards/types";
+import { isGame, type Game } from "@/lib/cards/types";
 import { BackButton } from "@/components/BackButton";
 import { InlineSymbols } from "@/components/ManaSymbols";
 import { VariantPicker } from "./VariantPicker";
-
-function isGame(g: string): g is Game {
-  return g === "YGO" || g === "MTG";
-}
 
 interface CardDetail {
   /** UUID on the public.cards row when the card has already been cached

@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
 
 import {
+  getScryfallById,
   scryfallImage,
   searchScryfall,
   type ScryfallCard,
   type MtgSearchFilters,
 } from "@/lib/cards/scryfall";
 import {
+  getYgoById,
   searchYgo,
   ygoImage,
   type YgoCard,
   type YgoSearchFilters,
 } from "@/lib/cards/ygoprodeck";
+import { applyAlias, aliasesMatching } from "@/lib/cards/aliases";
 import { MAX_SEARCH_RESULTS, type Game, type SearchHit } from "@/lib/cards/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -91,6 +94,20 @@ function ygoHit(c: YgoCard): SearchHit {
   };
 }
 
+// Fetch a single card as a hit by its external id — used to inject aliased
+// cards the upstream fuzzy search can't return under their official name.
+async function hitById(
+  game: Game,
+  externalId: string,
+): Promise<SearchHit | null> {
+  if (game === "MTG") {
+    const c = await getScryfallById(externalId).catch(() => null);
+    return c ? mtgHit(c) : null;
+  }
+  const c = await getYgoById(externalId).catch(() => null);
+  return c ? ygoHit(c) : null;
+}
+
 interface OwnedJoin {
   quantity: number;
   card: { game: string; external_id: string } | null;
@@ -151,7 +168,7 @@ export async function GET(
   }
 
   try {
-    const results =
+    const hits =
       game === "MTG"
         ? (await searchScryfall(q, filtersRaw as MtgSearchFilters))
             .slice(0, MAX_SEARCH_RESULTS)
@@ -159,6 +176,26 @@ export async function GET(
         : (
             await searchYgo(q, MAX_SEARCH_RESULTS, filtersRaw as YgoSearchFilters)
           ).map(ygoHit);
+
+    // Surface cards by their official name even though the upstream search only
+    // knows the (outdated) name it carries: fetch any alias whose official name
+    // matches the query but that the upstream search didn't already return.
+    const present = new Set(hits.map((h) => h.external_id));
+    for (const alias of aliasesMatching(game, q)) {
+      if (present.has(alias.externalId)) continue;
+      const injected = await hitById(game, alias.externalId);
+      if (injected) {
+        hits.unshift(injected);
+        present.add(alias.externalId);
+      }
+    }
+
+    // Display the official name for every aliased card (upstream-found or injected).
+    for (const h of hits) {
+      h.name = applyAlias(game, h.external_id, h.name);
+    }
+
+    const results = hits.slice(0, MAX_SEARCH_RESULTS);
     await attachOwnedCounts(game, results);
     return NextResponse.json({ results });
   } catch (err) {

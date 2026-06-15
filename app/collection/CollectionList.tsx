@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { mtgPrimaryType } from "@/lib/cards/rawFields";
@@ -122,31 +122,51 @@ function colorsMatch(cardColors: string[], filter: string): boolean {
   return true;
 }
 
+// ─── URL <-> state restore ──────────────────────────────────────────────────
+
+const SORT_KEYS: SortKey[] = ["name", "quantity", "recent", "set"];
+
+function parseSort(raw: string | null): { sortKey: SortKey; sortDir: SortDir } {
+  const [k, d] = (raw ?? "").split(":");
+  return {
+    sortKey: (SORT_KEYS as string[]).includes(k) ? (k as SortKey) : "name",
+    sortDir: d === "desc" ? "desc" : "asc",
+  };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function CollectionList({ rows }: { rows: CollectionRow[] }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   // Everything page-local lives in one bag of state. Mutations go through
   // `patch`, which collapses what used to be ~13 individual useStates into a
-  // single update path. Game / query seed from the URL so a back-nav from a
-  // card detail page restores the user's view.
-  const [state, setState] = useState<CollectionState>(() => ({
-    query: searchParams.get("q") ?? "",
-    gameFilter: parseGameParam(searchParams.get("game")),
-    showAdvanced: false,
-    typeFilter: "",
-    keywordFilter: "",
-    variantFilter: "",
-    attributeFilter: "",
-    raceFilter: "",
-    levelFilter: "",
-    colorsFilter: "",
-    sortKey: "name",
-    sortDir: "asc",
-    page: 1,
-  }));
+  // single update path. The whole view (query, game, advanced filters, sort)
+  // seeds from the URL so a back-nav from a card detail page restores it — not
+  // just the name query. The advanced panel auto-opens when any of its filters
+  // is restored so the user can see what's active.
+  const [state, setState] = useState<CollectionState>(() => {
+    const sp = searchParams;
+    const advanced = {
+      typeFilter: sp.get("type") ?? "",
+      keywordFilter: sp.get("kw") ?? "",
+      variantFilter: sp.get("variant") ?? "",
+      attributeFilter: sp.get("attr") ?? "",
+      raceFilter: sp.get("race") ?? "",
+      levelFilter: sp.get("level") ?? "",
+      colorsFilter: sp.get("colors") ?? "",
+    };
+    const { sortKey, sortDir } = parseSort(sp.get("sort"));
+    return {
+      query: sp.get("q") ?? "",
+      gameFilter: parseGameParam(sp.get("game")),
+      showAdvanced: Object.values(advanced).some(Boolean),
+      ...advanced,
+      sortKey,
+      sortDir,
+      page: 1,
+    };
+  });
   function patch(p: Partial<CollectionState>) {
     setState((prev) => ({ ...prev, ...p }));
   }
@@ -217,18 +237,48 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
     });
   }
 
-  // Mirror state → URL (debounced) so the back-navigation restore works.
+  // Mirror the whole view → URL so a back-navigation from a card detail page
+  // restores it (name query *and* advanced filters / sort). We write the URL
+  // synchronously via the History API rather than a debounced router.replace:
+  // client-side filtering shows results instantly, so the user often clicks a
+  // card within a debounce window — a pending replace would then be cancelled
+  // on unmount, dropping params from the URL. replaceState is cheap and
+  // integrates with useSearchParams (see Next "Native History API" docs).
   useEffect(() => {
     const params = new URLSearchParams();
     if (gameFilter !== "YGO") params.set("game", gameFilter);
     const trimmed = query.trim();
     if (trimmed) params.set("q", trimmed);
-    const target = params.toString() ? `/collection?${params}` : "/collection";
-    const t = setTimeout(() => {
-      router.replace(target, { scroll: false });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [gameFilter, query, router]);
+    if (typeFilter) params.set("type", typeFilter);
+    const kw = keywordFilter.trim();
+    if (kw) params.set("kw", kw);
+    if (variantFilter) params.set("variant", variantFilter);
+    if (attributeFilter) params.set("attr", attributeFilter);
+    if (raceFilter) params.set("race", raceFilter);
+    if (levelFilter) params.set("level", levelFilter);
+    if (colorsFilter) params.set("colors", colorsFilter);
+    if (sortKey !== "name" || sortDir !== "asc") {
+      params.set("sort", `${sortKey}:${sortDir}`);
+    }
+    const qs = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      qs ? `/collection?${qs}` : "/collection",
+    );
+  }, [
+    gameFilter,
+    query,
+    typeFilter,
+    keywordFilter,
+    variantFilter,
+    attributeFilter,
+    raceFilter,
+    levelFilter,
+    colorsFilter,
+    sortKey,
+    sortDir,
+  ]);
 
   // Dropdown options are scoped to the current game and to what the user
   // actually owns — no point offering "Foil" to a YGO-only player or

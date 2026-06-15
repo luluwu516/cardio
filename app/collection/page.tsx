@@ -8,6 +8,7 @@ import {
   pickYgoLevel,
   pickYgoRace,
 } from "@/lib/cards/rawFields";
+import { applyAlias } from "@/lib/cards/aliases";
 import { CollectionList } from "./CollectionList";
 import type { CollectionRow } from "./types";
 
@@ -73,7 +74,7 @@ export default async function CollectionPage() {
             id: r.card.id,
             game: r.card.game,
             external_id: r.card.external_id,
-            name: r.card.name,
+            name: applyAlias(r.card.game, r.card.external_id, r.card.name),
             type: r.card.type,
             image_url: r.card.image_url,
             set: pickSetName(r.card.game, r.card.raw),

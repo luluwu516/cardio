@@ -9,7 +9,10 @@
 import type { ScryfallCard } from "./scryfall";
 import type { YgoCard } from "./ygoprodeck";
 
-const YGO_RARITY_ORDER = [
+// Canonical rarity names in hierarchy order. Exported so the variant picker
+// can offer them as a dropdown when the user adds a rarity the card's API
+// payload didn't list.
+export const YGO_RARITY_ORDER = [
   "Common",
   "Short Print",
   "Super Short Print",
@@ -26,6 +29,37 @@ const YGO_RARITY_ORDER = [
   "Collector's Rare",
 ];
 
+// Values YGOPRODeck has been observed to stuff into `set_rarity` that are not
+// rarities at all (matched case-insensitively after trimming). e.g. Dragunity
+// Falchion's only printing reports a rarity of "New".
+const YGO_RARITY_JUNK = new Set(["new"]);
+
+function rarityKey(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// Canonical lookup keyed by the normalized form so casing / spacing variants
+// ("super rare", "Super  Rare") all resolve to one display name. Seeded from
+// the hierarchy above; add alias keys here as new alternate spellings surface.
+const YGO_RARITY_BY_KEY = new Map<string, string>(
+  YGO_RARITY_ORDER.map((r) => [rarityKey(r), r]),
+);
+
+// Normalize a raw set_rarity into a canonical name, or null if it isn't a
+// usable rarity. Unknown-but-plausible values (a real promo rarity we haven't
+// catalogued) are kept verbatim rather than dropped, so we only discard the
+// values we're confident are junk.
+function normalizeYgoRarity(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const key = rarityKey(trimmed);
+  if (YGO_RARITY_JUNK.has(key)) return null;
+  // Every real rarity name has at least one letter; drop stray numerics etc.
+  if (!/[A-Za-z]/.test(trimmed)) return null;
+  return YGO_RARITY_BY_KEY.get(key) ?? trimmed;
+}
+
 const MTG_FINISH_ORDER = ["nonfoil", "foil", "etched"];
 
 function dedupeOrdered<T>(xs: T[]): T[] {
@@ -39,19 +73,12 @@ function dedupeOrdered<T>(xs: T[]): T[] {
   return out;
 }
 
-// YGOPRODeck's card_sets occasionally has junk in `set_rarity` (we've seen
-// stray numerics like "2"). Filter to strings that contain at least one
-// letter — every real rarity name has at least one.
-function looksLikeRarity(r: string | undefined | null): r is string {
-  return !!r && /[A-Za-z]/.test(r);
-}
-
 export function ygoVariantsForCard(card: YgoCard): string[] {
-  const raw = (card.card_sets ?? [])
-    .map((s) => s.set_rarity?.trim())
-    .filter(looksLikeRarity);
-  if (raw.length === 0) return ["Common"];
-  const unique = dedupeOrdered(raw);
+  const cleaned = (card.card_sets ?? [])
+    .map((s) => normalizeYgoRarity(s.set_rarity))
+    .filter((r): r is string => r !== null);
+  if (cleaned.length === 0) return ["Common"];
+  const unique = dedupeOrdered(cleaned);
   // Stable display order: known rarities first by hierarchy, unknown rarities
   // (rare promotional names) appended in the order we saw them.
   const known: string[] = [];

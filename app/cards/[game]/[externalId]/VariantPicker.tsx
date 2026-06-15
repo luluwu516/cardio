@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react";
 
 import type { Game } from "@/lib/cards/types";
+import { YGO_RARITY_ORDER } from "@/lib/cards/variants";
 import { applyDelta } from "@/app/search/actions";
+
+// Sentinel <option> value: reveal the free-text field so the user can enter a
+// rarity that isn't in YGO_RARITY_ORDER yet (e.g. a freshly released one).
+const OTHER = "__other__";
 
 interface Props {
   game: Game;
@@ -35,9 +40,33 @@ export function VariantPicker({
   const [committing, setCommitting] = useState<Record<string, boolean>>({});
   const [open, setOpen] = useState<boolean>(autoOpen || initialTotal > 0);
   const [error, setError] = useState<string | null>(null);
+  // Rarities the user added that weren't in the card's API payload. Rendered
+  // after `variants`; the +/− / Confirm flow below works on them unchanged.
+  const [customVariants, setCustomVariants] = useState<string[]>([]);
+  const [addChoice, setAddChoice] = useState<string>("");
+  const [customText, setCustomText] = useState<string>("");
   const [, startTransition] = useTransition();
 
   const total = Object.values(owned).reduce((s, n) => s + n, 0);
+  // Dedupe: after a Confirm the server revalidation can fold a freshly-added
+  // custom rarity back into `variants`, while `customVariants` still holds it —
+  // without this the rarity would render twice (and collide on the React key).
+  const allVariants = [...new Set([...variants, ...customVariants])];
+
+  // Dropdown only offers rarities not already shown; "Other…" is always last.
+  const addableRarities = YGO_RARITY_ORDER.filter(
+    (r) => !allVariants.includes(r),
+  );
+
+  function addVariant() {
+    const name = (addChoice === OTHER ? customText : addChoice).trim();
+    if (!name) return;
+    if (!allVariants.includes(name)) {
+      setCustomVariants((v) => [...v, name]);
+    }
+    setAddChoice("");
+    setCustomText("");
+  }
 
   function adjust(variant: string, sign: 1 | -1) {
     if (committing[variant]) return;
@@ -106,7 +135,7 @@ export function VariantPicker({
 
       {open ? (
         <ul className="mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          {variants.map((variant) => {
+          {allVariants.map((variant) => {
             const ownedQty = owned[variant] ?? 0;
             const delta = pending[variant] ?? 0;
             const dirty = delta !== 0;
@@ -156,6 +185,46 @@ export function VariantPicker({
               </li>
             );
           })}
+
+          {game === "YGO" ? (
+            <li className="flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+              <select
+                value={addChoice}
+                onChange={(e) => setAddChoice(e.target.value)}
+                aria-label="Rarity to add"
+                className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="">Add a rarity…</option>
+                {addableRarities.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+                <option value={OTHER}>Other…</option>
+              </select>
+              {addChoice === OTHER ? (
+                <input
+                  type="text"
+                  value={customText}
+                  onChange={(e) => setCustomText(e.target.value)}
+                  placeholder="Rarity name"
+                  aria-label="Custom rarity name"
+                  className="h-8 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              ) : null}
+              <button
+                onClick={addVariant}
+                disabled={
+                  addChoice === ""
+                    ? true
+                    : addChoice === OTHER && customText.trim() === ""
+                }
+                className="h-8 rounded-md border border-zinc-300 px-3 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                Add
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </section>

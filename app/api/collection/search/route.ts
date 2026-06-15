@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { applyAlias, aliasesMatching } from "@/lib/cards/aliases";
 import { MAX_SEARCH_RESULTS, type Game, type SearchHit } from "@/lib/cards/types";
 
 function isGame(g: string): g is Game {
@@ -29,6 +30,8 @@ export async function GET(request: Request) {
       { status: 400 },
     );
   }
+  // Narrowed copy: the isGame guard doesn't carry into the addRow closure below.
+  const cardGame: Game = game;
   if (q.length < 2) {
     return NextResponse.json({ results: [] });
   }
@@ -57,15 +60,15 @@ export async function GET(request: Request) {
   // Roll up multiple variant rows (e.g. Common + Secret Rare of the same
   // YGO card) into one hit so the deck builder doesn't list duplicates.
   const ownedByExt = new Map<string, SearchHit>();
-  for (const row of (data ?? []) as unknown as JoinedRow[]) {
-    if (!row.card) continue;
+  function addRow(row: JoinedRow) {
+    if (!row.card) return;
     const ext = row.card.external_id;
     const existing = ownedByExt.get(ext);
     if (existing) {
       existing.owned += row.quantity;
     } else {
       ownedByExt.set(ext, {
-        game,
+        game: cardGame,
         external_id: ext,
         name: row.card.name,
         type: row.card.type ?? "",
@@ -73,6 +76,29 @@ export async function GET(request: Request) {
         owned: row.quantity,
       });
     }
+  }
+  for (const row of (data ?? []) as unknown as JoinedRow[]) addRow(row);
+
+  // Also match owned cards by their official name — the cached card.name is the
+  // upstream name, which the ilike above won't match for aliased cards.
+  const aliasExts = aliasesMatching(game, q)
+    .map((a) => a.externalId)
+    .filter((ext) => !ownedByExt.has(ext));
+  if (aliasExts.length > 0) {
+    const { data: aliasRows } = await supabase
+      .from("user_cards")
+      .select(
+        "quantity, card:cards!inner(external_id, name, type, image_url, game)",
+      )
+      .eq("user_id", user.id)
+      .eq("card.game", game)
+      .in("card.external_id", aliasExts);
+    for (const row of (aliasRows ?? []) as unknown as JoinedRow[]) addRow(row);
+  }
+
+  // Display the official name for every aliased hit.
+  for (const hit of ownedByExt.values()) {
+    hit.name = applyAlias(game, hit.external_id, hit.name);
   }
 
   const results = Array.from(ownedByExt.values()).slice(0, MAX_SEARCH_RESULTS);

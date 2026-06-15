@@ -9,6 +9,7 @@ import {
   mtgVariantsFromRaw,
   ygoVariantsFromRaw,
 } from "@/lib/cards/variants";
+import { applyAlias } from "@/lib/cards/aliases";
 import { pickMtgColors, pickSetInfo } from "@/lib/cards/rawFields";
 import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
 import type { Game } from "@/lib/cards/types";
@@ -66,11 +67,14 @@ async function loadFromCards(
   const setInfo = pickSetInfo(game, raw);
   const variants =
     game === "YGO" ? ygoVariantsFromRaw(raw) : mtgVariantsFromRaw(raw);
+  // Use the official name for both the heading and the TCGPlayer search link —
+  // TCGPlayer indexes the official name, not the upstream's outdated one.
+  const displayName = applyAlias(game, data.external_id, data.name);
   return {
     internal_id: data.id,
     game,
     external_id: data.external_id,
-    name: data.name,
+    name: displayName,
     type: data.type,
     description: data.description,
     image_url: data.image_url,
@@ -86,7 +90,7 @@ async function loadFromCards(
       raw.legalities && typeof raw.legalities === "object"
         ? (raw.legalities as Record<string, string>)
         : null,
-    tcgplayer_url: tcgPlayerSearchUrl(game, data.name),
+    tcgplayer_url: tcgPlayerSearchUrl(game, displayName),
     scryfall_uri:
       typeof raw.scryfall_uri === "string" ? (raw.scryfall_uri as string) : null,
     ...setInfo,
@@ -101,11 +105,12 @@ async function loadFromExternal(
   if (game === "MTG") {
     const c = await getScryfallById(externalId).catch(() => null);
     if (!c) return null;
+    const displayName = applyAlias("MTG", c.id, c.name);
     return {
       internal_id: null,
       game,
       external_id: c.id,
-      name: c.name,
+      name: displayName,
       type: c.type_line ?? null,
       description: c.oracle_text ?? null,
       image_url: scryfallImage(c),
@@ -117,7 +122,7 @@ async function loadFromExternal(
       level: null,
       archetype: null,
       legalities: c.legalities ?? null,
-      tcgplayer_url: tcgPlayerSearchUrl("MTG", c.name),
+      tcgplayer_url: tcgPlayerSearchUrl("MTG", displayName),
       scryfall_uri: null,
       set_name: c.set_name ?? c.set ?? null,
       set_query: c.set ?? null,
@@ -127,11 +132,12 @@ async function loadFromExternal(
   const c = await getYgoById(externalId).catch(() => null);
   if (!c) return null;
   const ygoSetName = c.card_sets?.[0]?.set_name ?? null;
+  const displayName = applyAlias("YGO", String(c.id), c.name);
   return {
     internal_id: null,
     game,
     external_id: String(c.id),
-    name: c.name,
+    name: displayName,
     type: c.type,
     description: c.desc,
     image_url: ygoImage(c),
@@ -143,7 +149,7 @@ async function loadFromExternal(
     level: typeof c.level === "number" ? c.level : null,
     archetype: c.archetype ?? null,
     legalities: null,
-    tcgplayer_url: tcgPlayerSearchUrl("YGO", c.name),
+    tcgplayer_url: tcgPlayerSearchUrl("YGO", displayName),
     scryfall_uri: null,
     set_name: ygoSetName,
     set_query: ygoSetName,

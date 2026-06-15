@@ -5,6 +5,7 @@ import { BackButton } from "@/components/BackButton";
 import { getScryfallById } from "@/lib/cards/scryfall";
 import { tcgPlayerSearchUrl } from "@/lib/cards/tcgplayer";
 import { getYgoById } from "@/lib/cards/ygoprodeck";
+import { applyAlias } from "@/lib/cards/aliases";
 import type { Game } from "@/lib/cards/types";
 import { deleteDeck, renameDeck } from "../actions";
 import { DeckEditor, type DeckCardDisplay } from "./DeckEditor";
@@ -199,12 +200,16 @@ export default async function DeckEditorPage({
     // not on the buylist never read their price, so the staleness on the
     // fallback path is harmless.
     const rawForPrice = freshRawByExt.get(c.external_id) ?? c.raw;
-    const price = extractPriceInfo(c.game, c.name, rawForPrice);
+    // Official name drives display and the TCGPlayer search link (TCGPlayer
+    // indexes the official name). The price number comes from rawForPrice, not
+    // the name, so aliasing the name doesn't affect pricing accuracy.
+    const displayName = applyAlias(c.game, c.external_id, c.name);
+    const price = extractPriceInfo(c.game, displayName, rawForPrice);
     return {
       cardId: c.id,
       externalId: c.external_id,
       game: c.game,
-      name: c.name,
+      name: displayName,
       type: c.type,
       image_url: c.image_url,
       inDeck: dc.quantity,

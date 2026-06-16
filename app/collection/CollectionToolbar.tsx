@@ -26,6 +26,8 @@ interface Props {
   advancedActive: boolean;
   onGameChange: (g: Game) => void;
   onExport: (g: Game) => void;
+  onBackup: () => void;
+  backupBusy: boolean;
 }
 
 // Top of the collection page: game tabs + CSV export, then the name search
@@ -40,6 +42,8 @@ export function CollectionToolbar({
   advancedActive,
   onGameChange,
   onExport,
+  onBackup,
+  backupBusy,
 }: Props) {
   const { query, gameFilter, showAdvanced, sortKey, sortDir } = state;
 
@@ -63,19 +67,21 @@ export function CollectionToolbar({
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {/* Human-readable export of the active game (the tab decides which). */}
           <button
-            onClick={() => onExport("YGO")}
-            disabled={ygoCount === 0}
+            onClick={() => onExport(gameFilter)}
+            disabled={(gameFilter === "YGO" ? ygoCount : mtgCount) === 0}
             className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
-            Export YGO CSV
+            Export {gameFilter} CSV
           </button>
+          {/* Full restore backup of the whole collection (both games). */}
           <button
-            onClick={() => onExport("MTG")}
-            disabled={mtgCount === 0}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            onClick={onBackup}
+            disabled={backupBusy || ygoCount + mtgCount === 0}
+            className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
           >
-            Export MTG CSV
+            {backupBusy ? "Backing up…" : "Backup"}
           </button>
         </div>
       </div>

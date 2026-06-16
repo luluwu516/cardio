@@ -7,6 +7,7 @@ import { mtgPrimaryType } from "@/lib/cards/rawFields";
 import { parseGameParam, type Game } from "@/lib/cards/types";
 import { csvEscape, downloadBlob, ymd } from "@/lib/csv";
 
+import { exportCollectionBackup } from "./actions";
 import { AdvancedPanel } from "./AdvancedPanel";
 import { CollectionItem } from "./CollectionItem";
 import { CollectionToolbar } from "./CollectionToolbar";
@@ -163,6 +164,9 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
     sortDir,
     page,
   } = state;
+
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   // Reset to page 1 whenever the filter/sort signature changes. Uses the
   // React-recommended "adjust state during render" pattern (see "Storing
@@ -340,13 +344,35 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
   }
 
   function exportCsv(game: Game) {
-    // Export every row of the chosen game — not just what's currently visible
-    // through the filter — so the file is a complete backup.
+    // Human-readable per-game export (for Excel / Numbers). Dumps every row of
+    // the chosen game — not just what the filter currently shows. This is the
+    // lightweight view, not the restore backup (see backup() below).
     const subset = rows.filter((r) => r.card?.game === game);
     if (subset.length === 0) return;
     const csv = buildCollectionCsv(subset);
     const filename = `cardio-${game.toLowerCase()}-collection-${ymd(new Date())}.csv`;
     downloadBlob(csv, filename, "text/csv;charset=utf-8");
+  }
+
+  // Full restore backup: fetches the complete card data (incl. raw) server-side
+  // — it isn't on the page — so a future import can rebuild without re-hitting
+  // the card APIs. Covers the whole collection (both games) in one file.
+  async function backup() {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    setBackupError(null);
+    try {
+      const csv = await exportCollectionBackup();
+      downloadBlob(
+        csv,
+        `cardio-backup-${ymd(new Date())}.csv`,
+        "text/csv;charset=utf-8",
+      );
+    } catch (e) {
+      setBackupError((e as Error).message);
+    } finally {
+      setBackupBusy(false);
+    }
   }
 
   const ygoCount = rows.filter((r) => r.card?.game === "YGO").length;
@@ -371,7 +397,15 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
         advancedActive={advancedActive}
         onGameChange={changeGame}
         onExport={exportCsv}
+        onBackup={backup}
+        backupBusy={backupBusy}
       />
+
+      {backupError ? (
+        <p className="mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          Backup failed: {backupError}
+        </p>
+      ) : null}
 
       {showAdvanced ? (
         <div className="mb-3">

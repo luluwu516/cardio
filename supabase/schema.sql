@@ -1,6 +1,17 @@
 -- cardIO database schema
 -- Run this in the Supabase SQL Editor for project cardio.
 -- Idempotent enough to re-run if you tweak something (create-if-not-exists where it matters).
+--
+-- This file is the single source of truth for the schema. Earlier one-off
+-- ad-hoc migrations have been folded in and removed (see git history):
+--   * 2026-05-12 variant: replaced user_cards.condition + foil with a single
+--     `variant` column and the (user_id, card_id, variant) unique key
+--     (one-time data wipe; not part of a fresh build).
+--   * 2026-05-12 cards-anon-read: granted SELECT on cards to the anon role
+--     for the /api/health cron ping.
+--   * 2026-05-26 indexes: added decks(user_id); dropped the redundant
+--     user_cards(user_id) index (covered by the unique constraint's btree).
+-- For future changes to an existing DB, see supabase/migrations/README.md.
 
 -- ============================================================
 -- Tables
@@ -39,7 +50,9 @@ create table if not exists public.user_cards (
   created_at         timestamptz not null default now(),
   unique (user_id, card_id, variant)
 );
-create index if not exists user_cards_user_id_idx on public.user_cards (user_id);
+-- No standalone (user_id) index: the unique (user_id, card_id, variant)
+-- constraint is backed by a btree whose leftmost column is user_id, so it
+-- already serves user_id-prefix lookups.
 -- Speeds up the "what does the user own of these card ids?" lookup that
 -- the deck editor + card detail pages run on every render.
 create index if not exists user_cards_card_id_idx on public.user_cards (card_id);
@@ -54,6 +67,8 @@ create table if not exists public.decks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Decks are listed and RLS-gated by owner.
+create index if not exists decks_user_id_idx on public.decks (user_id);
 
 create table if not exists public.deck_cards (
   deck_id   uuid not null references public.decks on delete cascade,

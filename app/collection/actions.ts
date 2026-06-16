@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { csvEscape } from "@/lib/csv";
+import type { Game } from "@/lib/cards/types";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -99,6 +100,129 @@ export async function exportCollectionBackup(): Promise<string> {
   }
 
   return lines.join("\n");
+}
+
+// ─── Restore import ──────────────────────────────────────────────────────────
+
+// One parsed backup row. `raw` is the already-JSON-parsed payload (or null).
+// The client parses the CSV and sends rows in small batches to stay under the
+// server-action body limit; this action is idempotent so batches are safe.
+export interface ImportRow {
+  game: string;
+  external_id: string;
+  name: string;
+  type: string | null;
+  frame_type: string | null;
+  description: string | null;
+  image_url: string | null;
+  mana_cost: string | null;
+  attribute: string | null;
+  raw: unknown;
+  variant: string;
+  quantity: number;
+  created_at: string | null;
+}
+
+export interface ImportResult {
+  cards: number;
+  entries: number;
+  skipped: number;
+}
+
+export async function importCollectionBackup(
+  rows: ImportRow[],
+): Promise<ImportResult> {
+  const { supabase, user } = await requireUser();
+
+  // 1. Rebuild the shared `cards` cache (deduped by game+external_id) straight
+  //    from the backup — no API calls. Skip rows missing the identity keys.
+  const cardByKey = new Map<
+    string,
+    {
+      game: Game;
+      external_id: string;
+      name: string;
+      type: string | null;
+      frame_type: string | null;
+      description: string | null;
+      image_url: string | null;
+      mana_cost: string | null;
+      attribute: string | null;
+      raw: unknown;
+    }
+  >();
+  for (const r of rows) {
+    if ((r.game !== "YGO" && r.game !== "MTG") || !r.external_id) continue;
+    const key = `${r.game}:${r.external_id}`;
+    if (cardByKey.has(key)) continue;
+    cardByKey.set(key, {
+      game: r.game,
+      external_id: r.external_id,
+      name: r.name,
+      type: r.type,
+      frame_type: r.frame_type,
+      description: r.description,
+      image_url: r.image_url,
+      mana_cost: r.mana_cost,
+      attribute: r.attribute,
+      raw: r.raw ?? null,
+    });
+  }
+
+  const idByKey = new Map<string, string>();
+  if (cardByKey.size > 0) {
+    const { data, error } = await supabase
+      .from("cards")
+      .upsert([...cardByKey.values()], { onConflict: "game,external_id" })
+      .select("id, game, external_id");
+    if (error) throw new Error(error.message);
+    for (const c of (data ?? []) as Array<{
+      id: string;
+      game: string;
+      external_id: string;
+    }>) {
+      idByKey.set(`${c.game}:${c.external_id}`, c.id);
+    }
+  }
+
+  // 2. Restore ownership. Dedupe by (card_id, variant) so a single upsert batch
+  //    never touches the same conflict target twice (Postgres rejects that),
+  //    keeping the last occurrence.
+  let skipped = 0;
+  const ucByKey = new Map<
+    string,
+    {
+      user_id: string;
+      card_id: string;
+      variant: string;
+      quantity: number;
+      created_at?: string;
+    }
+  >();
+  for (const r of rows) {
+    const cardId = idByKey.get(`${r.game}:${r.external_id}`);
+    const qty = Math.floor(Number(r.quantity));
+    if (!cardId || !r.variant || !Number.isFinite(qty) || qty <= 0) {
+      skipped += 1;
+      continue;
+    }
+    ucByKey.set(`${cardId}:${r.variant}`, {
+      user_id: user.id,
+      card_id: cardId,
+      variant: r.variant,
+      quantity: qty,
+      ...(r.created_at ? { created_at: r.created_at } : {}),
+    });
+  }
+
+  if (ucByKey.size > 0) {
+    const { error } = await supabase
+      .from("user_cards")
+      .upsert([...ucByKey.values()], { onConflict: "user_id,card_id,variant" });
+    if (error) throw new Error(error.message);
+  }
+
+  return { cards: cardByKey.size, entries: ucByKey.size, skipped };
 }
 
 export async function changeQuantity(id: string, delta: number) {

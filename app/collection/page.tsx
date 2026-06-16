@@ -9,6 +9,7 @@ import {
   pickYgoRace,
 } from "@/lib/cards/rawFields";
 import { applyAlias } from "@/lib/cards/aliases";
+import { CollectionHeading } from "./CollectionHeading";
 import { CollectionList } from "./CollectionList";
 import type { CollectionRow } from "./types";
 
@@ -96,8 +97,8 @@ export default async function CollectionPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Collection</h1>
+      <div className="mb-4">
+        <CollectionHeading />
       </div>
 
       {error ? (

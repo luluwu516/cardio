@@ -26,6 +26,60 @@ export function safeFilename(name: string, fallback = "export"): string {
   );
 }
 
+// Parse CSV text into rows of fields (RFC-4180): handles quoted fields that
+// contain commas, escaped "" quotes, and newlines — needed because the backup
+// embeds each card's `raw` JSON in a single field. Tolerates both \n and \r\n.
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i += 1;
+        }
+      } else {
+        field += ch;
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      i += 1;
+    } else if (ch === ",") {
+      row.push(field);
+      field = "";
+      i += 1;
+    } else if (ch === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i += 1;
+    } else if (ch === "\r") {
+      i += 1; // swallow; the \n (if any) ends the row
+    } else {
+      field += ch;
+      i += 1;
+    }
+  }
+  // Flush a trailing field/row when the file doesn't end in a newline.
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
 /** Trigger a browser download of in-memory content. Client-only (uses DOM). */
 export function downloadBlob(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });

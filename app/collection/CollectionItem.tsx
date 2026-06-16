@@ -55,35 +55,43 @@ export function CollectionItem({ row }: { row: CollectionRow }) {
 
   return (
     <li className="flex flex-col gap-1 rounded-lg border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex gap-3">
         <Link
           href={`/cards/${card.game}/${encodeURIComponent(card.external_id)}`}
-          className="flex min-w-0 flex-1 items-center gap-3"
+          aria-label={card.name}
+          className="relative h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800"
         >
-          <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
-            {card.image_url ? (
-              <Image
-                src={card.image_url}
-                alt={card.name}
-                fill
-                sizes="56px"
-                className="object-cover"
-              />
-            ) : null}
-          </div>
-          <div className="min-w-0 flex-1">
+          {card.image_url ? (
+            <Image
+              src={card.image_url}
+              alt={card.name}
+              fill
+              sizes="56px"
+              className="object-cover"
+            />
+          ) : null}
+        </Link>
+        {/* Right column matches the image height. The name/variant link grows
+            so the controls sit at the bottom on mobile (and to the right,
+            vertically centered, on desktop). */}
+        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <Link
+            href={`/cards/${card.game}/${encodeURIComponent(card.external_id)}`}
+            className="block min-w-0 flex-1"
+          >
             <p className="truncate text-sm font-medium">
               {card.name}
-              <span className="ml-1 text-xs font-normal text-zinc-500">
+              {/* Variant sits inline on desktop, but on mobile it gets its own
+                  line below so a long name can't push it out of view. */}
+              <span className="ml-1 hidden text-xs font-normal text-zinc-500 sm:inline">
                 ({row.variant})
               </span>
             </p>
-            {card.type ? (
-              <p className="truncate text-xs text-zinc-500">{card.type}</p>
-            ) : null}
-          </div>
-        </Link>
-        <div className="flex items-center gap-1 self-end sm:self-auto">
+            <p className="truncate text-xs text-zinc-500 sm:hidden">
+              {row.variant}
+            </p>
+          </Link>
+          <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
           <button
             onClick={() => adjust(-1)}
             disabled={committing || display === 0}
@@ -115,6 +123,7 @@ export function CollectionItem({ row }: { row: CollectionRow }) {
           >
             {committing ? "Saving…" : "Confirm"}
           </button>
+          </div>
         </div>
       </div>
       {error ? (

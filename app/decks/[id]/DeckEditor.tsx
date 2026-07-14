@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Game, SearchHit } from "@/lib/cards/types";
 import { csvEscape, downloadBlob, safeFilename, ymd } from "@/lib/csv";
 import { SearchInput } from "@/components/SearchInput";
+import { useOnlineStatus } from "@/lib/useOnlineStatus";
 import { changeDeckCardQuantity } from "../actions";
 
 export interface DeckCardDisplay {
@@ -102,6 +103,9 @@ export function DeckEditor({
   const [pending, setPending] = useState<Record<string, number>>({});
   const [committing, setCommitting] = useState<Record<string, boolean>>({});
   const [, startTransition] = useTransition();
+  // Deck search and edits both need the network; disable them offline. Viewing
+  // a cached deck stays read-only. (Export buylist is client-side — stays on.)
+  const online = useOnlineStatus();
 
   // Clearing the input shouldn't keep showing the prior search's results.
   // Mask the committed query whenever the live input is empty rather than
@@ -187,7 +191,7 @@ export function DeckEditor({
   }, [trimmed, mode, deckGame, isValid]);
 
   function submitSearch() {
-    if (!canSubmit) return;
+    if (!canSubmit || !online) return;
     setCommittedQuery(query);
   }
 
@@ -218,7 +222,7 @@ export function DeckEditor({
 
   function confirm(externalId: string) {
     const delta = pending[externalId] ?? 0;
-    if (delta === 0 || committing[externalId]) return;
+    if (delta === 0 || committing[externalId] || !online) return;
     setCommitting((c) => ({ ...c, [externalId]: true }));
     // Clear pending optimistically so once server revalidation updates the
     // props the row's display matches. Restore on failure.
@@ -280,12 +284,19 @@ export function DeckEditor({
           <button
             type="button"
             onClick={submitSearch}
-            disabled={!canSubmit}
+            disabled={!canSubmit || !online}
+            title={online ? undefined : "Search is unavailable offline"}
             className="shrink-0 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
           >
             Search
           </button>
         </div>
+
+        {!online ? (
+          <p className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            Offline — deck search and editing are disabled.
+          </p>
+        ) : null}
         <div className="mb-2 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
           {(["owned", "all"] as Mode[]).map((m) => (
             <button
@@ -378,7 +389,7 @@ export function DeckEditor({
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={() => adjust(hit.external_id, -1)}
-                    disabled={isCommitting || displayQty === 0}
+                    disabled={isCommitting || displayQty === 0 || !online}
                     aria-label="Remove one from deck"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
@@ -396,7 +407,7 @@ export function DeckEditor({
                   </span>
                   <button
                     onClick={() => adjust(hit.external_id, +1)}
-                    disabled={isCommitting}
+                    disabled={isCommitting || !online}
                     aria-label="Add to deck"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
@@ -404,7 +415,7 @@ export function DeckEditor({
                   </button>
                   <button
                     onClick={() => confirm(hit.external_id)}
-                    disabled={!dirty || isCommitting}
+                    disabled={!dirty || isCommitting || !online}
                     className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
                   >
                     {isCommitting ? "Saving…" : "Confirm"}
@@ -423,6 +434,7 @@ export function DeckEditor({
         committing={committing}
         onAdjust={adjust}
         onConfirm={confirm}
+        online={online}
         bounds={deckGame === "YGO" ? YGO_BOUNDS.main : null}
       />
       {deckGame === "YGO" ? (
@@ -433,6 +445,7 @@ export function DeckEditor({
           committing={committing}
           onAdjust={adjust}
           onConfirm={confirm}
+          online={online}
           bounds={YGO_BOUNDS.extra}
           emptyHint="Fusion / Synchro / Xyz / Link monsters land here automatically."
         />
@@ -448,6 +461,7 @@ function BoardSection({
   committing,
   onAdjust,
   onConfirm,
+  online,
   bounds,
   emptyHint = "No cards yet. Use the search above to add.",
 }: {
@@ -457,6 +471,7 @@ function BoardSection({
   committing: Record<string, boolean>;
   onAdjust: (externalId: string, sign: 1 | -1) => void;
   onConfirm: (externalId: string) => void;
+  online: boolean;
   bounds: BoardBounds | null;
   emptyHint?: string;
 }) {
@@ -550,7 +565,7 @@ function BoardSection({
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={() => onAdjust(dc.externalId, -1)}
-                    disabled={isCommitting || displayQty === 0}
+                    disabled={isCommitting || displayQty === 0 || !online}
                     aria-label="Decrease"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
@@ -566,7 +581,7 @@ function BoardSection({
                   </span>
                   <button
                     onClick={() => onAdjust(dc.externalId, +1)}
-                    disabled={isCommitting}
+                    disabled={isCommitting || !online}
                     aria-label="Increase"
                     className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
                   >
@@ -574,7 +589,7 @@ function BoardSection({
                   </button>
                   <button
                     onClick={() => onConfirm(dc.externalId)}
-                    disabled={!dirty || isCommitting}
+                    disabled={!dirty || isCommitting || !online}
                     className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
                   >
                     {isCommitting ? "Saving…" : "Confirm"}

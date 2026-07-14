@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { BottomTabBar } from "@/components/BottomTabBar";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 import { TopBar } from "@/components/TopBar";
 
 const geistSans = Geist({
@@ -48,6 +50,8 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
+        <ServiceWorkerRegistrar />
+        <OfflineBanner />
         <TopBar />
         {children}
         <BottomTabBar />

@@ -2,6 +2,7 @@
 
 import type { Game } from "@/lib/cards/types";
 import { SearchInput } from "@/components/SearchInput";
+import { useOnlineStatus } from "@/lib/useOnlineStatus";
 
 import type { CollectionState, Patch, SortDir, SortKey } from "./types";
 
@@ -46,6 +47,10 @@ export function CollectionToolbar({
   backupBusy,
 }: Props) {
   const { query, gameFilter, showAdvanced, sortKey, sortDir } = state;
+  // Export CSV is built client-side from data already on the page, so it stays
+  // enabled offline. Backup calls a server action (fetches full card rows), so
+  // it needs the network.
+  const online = useOnlineStatus();
 
   return (
     <div className="mb-3 space-y-2">
@@ -78,7 +83,8 @@ export function CollectionToolbar({
           {/* Full restore backup of the whole collection (both games). */}
           <button
             onClick={onBackup}
-            disabled={backupBusy || ygoCount + mtgCount === 0}
+            disabled={backupBusy || ygoCount + mtgCount === 0 || !online}
+            title={online ? undefined : "Unavailable offline"}
             className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
           >
             {backupBusy ? "Backing up…" : "Backup"}

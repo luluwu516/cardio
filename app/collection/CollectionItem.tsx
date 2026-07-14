@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 
+import { useOnlineStatus } from "@/lib/useOnlineStatus";
 import { changeQuantity } from "./actions";
 import type { CollectionRow } from "./types";
 
@@ -16,6 +17,7 @@ export function CollectionItem({ row }: { row: CollectionRow }) {
   // rows without a card before rendering — keep the bang assertion local.
   const card = row.card!;
 
+  const online = useOnlineStatus();
   const [delta, setDelta] = useState(0);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function CollectionItem({ row }: { row: CollectionRow }) {
           <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
           <button
             onClick={() => adjust(-1)}
-            disabled={committing || display === 0}
+            disabled={committing || display === 0 || !online}
             aria-label="Decrease quantity"
             className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
@@ -110,7 +112,7 @@ export function CollectionItem({ row }: { row: CollectionRow }) {
           </span>
           <button
             onClick={() => adjust(+1)}
-            disabled={committing}
+            disabled={committing || !online}
             aria-label="Increase quantity"
             className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
@@ -118,7 +120,7 @@ export function CollectionItem({ row }: { row: CollectionRow }) {
           </button>
           <button
             onClick={confirm}
-            disabled={!dirty || committing}
+            disabled={!dirty || committing || !online}
             className="ml-2 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
           >
             {committing ? "Saving…" : "Confirm"}

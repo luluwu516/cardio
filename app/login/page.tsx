@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { ClearOfflineCache } from "@/components/ClearOfflineCache";
 import { login, signInWithGoogle } from "./actions";
 
 type SearchParams = Promise<{ error?: string; message?: string }>;
@@ -20,6 +21,7 @@ export default async function LoginPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-12 dark:bg-black">
+      <ClearOfflineCache />
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-2 text-center">
           <h1 className="text-3xl font-semibold tracking-tight">cardIO</h1>

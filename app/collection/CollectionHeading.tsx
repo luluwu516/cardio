@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { parseCsv } from "@/lib/csv";
+import { useOnlineStatus } from "@/lib/useOnlineStatus";
 import {
   importCollectionBackup,
   type ImportResult,
@@ -71,6 +72,7 @@ function rowsFromCsv(text: string): ImportRow[] {
 
 export function CollectionHeading() {
   const router = useRouter();
+  const online = useOnlineStatus();
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -96,6 +98,12 @@ export function CollectionHeading() {
     const file = e.target.files?.[0];
     e.target.value = ""; // let the same file be re-selected later
     if (!file) return;
+    // The picker may have been opened online and the file chosen after going
+    // offline — bail with a clear message instead of a raw network error.
+    if (!online) {
+      setError("You're offline — reconnect to import.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -157,11 +165,17 @@ export function CollectionHeading() {
           />
           <button
             onClick={() => fileRef.current?.click()}
-            disabled={busy}
+            disabled={busy || !online}
+            title={online ? undefined : "Unavailable offline"}
             className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
             {busy ? "Importing…" : "Import backup CSV"}
           </button>
+          {!online ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              Offline — import needs a connection.
+            </p>
+          ) : null}
           {message ? (
             <p className="mt-2 text-xs text-green-700 dark:text-green-400">
               {message}

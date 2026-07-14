@@ -15,6 +15,7 @@ import {
 } from "@/lib/cards/filters";
 import { MTG_COLOR_CHIPS, toggleColor as toggleColorChip } from "@/lib/cards/mtgColors";
 import { SearchInput } from "@/components/SearchInput";
+import { useOnlineStatus } from "@/lib/useOnlineStatus";
 
 const GAMES: Game[] = ["YGO", "MTG"];
 
@@ -110,6 +111,7 @@ function keyOf(hit: { game: Game; external_id: string }): string {
 function SearchInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const online = useOnlineStatus();
 
   const [game, setGame] = useState<Game>(() =>
     parseGameParam(searchParams.get("game")),
@@ -246,6 +248,7 @@ function SearchInner() {
   }
 
   function submitAll() {
+    if (!online) return; // search needs the card APIs
     setCommittedQuery(query);
     setCommittedFilters(filters);
   }
@@ -298,11 +301,20 @@ function SearchInner() {
         />
         <button
           onClick={submitAll}
-          className="shrink-0 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          disabled={!online}
+          title={online ? undefined : "Search is unavailable offline"}
+          className="shrink-0 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
         >
           Search
         </button>
       </div>
+
+      {!online ? (
+        <p className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+          You&apos;re offline — search needs a connection. Your collection is
+          still available to browse.
+        </p>
+      ) : null}
 
       <div className="mb-3 flex items-center justify-between gap-3">
         <button
@@ -352,7 +364,8 @@ function SearchInner() {
             </button>
             <button
               onClick={submitAll}
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              disabled={!online}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
             >
               Apply
             </button>

@@ -15,6 +15,7 @@ interface Deck {
   name: string;
   game: Game;
   format: string | null;
+  is_wishlist: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ interface Deck {
 interface JoinedDeckCard {
   quantity: number;
   board: string;
+  note: string | null;
   card: {
     id: string;
     external_id: string;
@@ -124,7 +126,7 @@ export default async function DeckEditorPage({
   // Round-trip 1: just the deck row — everything else fans out from its id/game.
   const { data: deckRow } = await supabase
     .from("decks")
-    .select("id, name, game, format, created_at, updated_at")
+    .select("id, name, game, format, is_wishlist, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
   if (!deckRow) notFound();
@@ -136,10 +138,14 @@ export default async function DeckEditorPage({
     supabase
       .from("deck_cards")
       .select(
-        "quantity, board, card:cards!inner(id, external_id, name, type, image_url, game, raw)",
+        "quantity, board, note, card:cards!inner(id, external_id, name, type, image_url, game, raw)",
       )
       .eq("deck_id", deck.id),
-    deck.game === "YGO" ? fetchYgoBanlist() : Promise.resolve(new Map<string, string>()),
+    // Wishlists don't need the banlist (they're a shopping list, not a legal
+    // deck), and YGO banlist is a remote fetch — skip it for wishlists.
+    deck.game === "YGO" && !deck.is_wishlist
+      ? fetchYgoBanlist()
+      : Promise.resolve(new Map<string, string>()),
   ]);
   const deckCards = (rawDeckCards ?? []) as unknown as JoinedDeckCard[];
 
@@ -214,7 +220,12 @@ export default async function DeckEditorPage({
       image_url: c.image_url,
       inDeck: dc.quantity,
       owned: ownedByCard.get(c.id) ?? 0,
-      violation: c.game === "YGO" ? ygoViolation(dc.quantity, banTcg) : null,
+      note: dc.note,
+      // Wishlists are a shopping list, not a legal deck — no banlist nag.
+      violation:
+        c.game === "YGO" && !deck.is_wishlist
+          ? ygoViolation(dc.quantity, banTcg)
+          : null,
       estPriceUsd: price.estPriceUsd,
       tcgplayerUrl: price.tcgplayerUrl,
     };
@@ -232,6 +243,19 @@ export default async function DeckEditorPage({
     .filter((x): x is DeckCardDisplay => !!x)
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // For a normal deck, offer to push its buylist into an existing wishlist of
+  // the same game. (Wishlists themselves don't show that action.)
+  let wishlists: Array<{ id: string; name: string }> = [];
+  if (!deck.is_wishlist) {
+    const { data: wl } = await supabase
+      .from("decks")
+      .select("id, name")
+      .eq("is_wishlist", true)
+      .eq("game", deck.game)
+      .order("updated_at", { ascending: false });
+    wishlists = (wl ?? []) as Array<{ id: string; name: string }>;
+  }
+
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
       <div className="mb-4">
@@ -242,6 +266,11 @@ export default async function DeckEditorPage({
         <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
           {deck.game}
         </span>
+        {deck.is_wishlist ? (
+          <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+            Wishlist
+          </span>
+        ) : null}
         <form action={renameDeck} className="flex flex-1 items-center gap-2">
           <input type="hidden" name="id" value={deck.id} />
           <input
@@ -262,6 +291,8 @@ export default async function DeckEditorPage({
         deckId={deck.id}
         deckName={deck.name}
         deckGame={deck.game}
+        isWishlist={deck.is_wishlist}
+        wishlists={wishlists}
         mainCards={mainCards}
         extraCards={extraCards}
       />

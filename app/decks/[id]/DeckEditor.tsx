@@ -2,13 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
 import { csvEscape, downloadBlob, safeFilename, ymd } from "@/lib/csv";
 import { SearchInput } from "@/components/SearchInput";
 import { useOnlineStatus } from "@/lib/useOnlineStatus";
-import { changeDeckCardQuantity } from "../actions";
+import {
+  addMissingToWishlist,
+  changeDeckCardQuantity,
+  createWishlistFromDeck,
+  setWishlistNote,
+} from "../actions";
+import { WishlistStoreView } from "./WishlistStoreView";
 
 export interface DeckCardDisplay {
   cardId: string;
@@ -19,6 +26,8 @@ export interface DeckCardDisplay {
   image_url: string | null;
   inDeck: number;
   owned: number;
+  /** Optional per-item note (wanted rarity / printing), chiefly for wishlists. */
+  note: string | null;
   /** Human-readable reason this row violates a deck-building rule, or null if legal. */
   violation: string | null;
   estPriceUsd: number | null;
@@ -79,21 +88,31 @@ export function DeckEditor({
   deckId,
   deckName,
   deckGame,
+  isWishlist,
+  wishlists,
   mainCards,
   extraCards,
 }: {
   deckId: string;
   deckName: string;
   deckGame: Game;
+  isWishlist: boolean;
+  wishlists: Array<{ id: string; name: string }>;
   mainCards: DeckCardDisplay[];
   extraCards: DeckCardDisplay[];
 }) {
+  const router = useRouter();
   // Draft (live input) vs committed (drives the fetch) — same model as the
   // /search page. Both modes wait for an explicit submit so a single Enter /
   // Search press always produces one request; nothing races as the user types.
   const [query, setQuery] = useState("");
   const [committedQuery, setCommittedQuery] = useState("");
-  const [mode, setMode] = useState<Mode>("owned");
+  // Wishlists default to searching all cards — you're looking for things you
+  // *don't* own yet, so "From collection" would be the wrong starting point.
+  const [mode, setMode] = useState<Mode>(isWishlist ? "all" : "owned");
+  const [storeMode, setStoreMode] = useState(false);
+  const [wlBusy, setWlBusy] = useState(false);
+  const [wlMenuOpen, setWlMenuOpen] = useState(false);
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,11 +170,42 @@ export function DeckEditor({
     (s, r) => s + (r.estPriceUsd ?? 0) * r.needed,
     0,
   );
+  // A wishlist is entirely a buy-list, so its summary totals every card, not
+  // just the not-yet-owned portion.
+  const wishlistTotal = mainCards.reduce(
+    (s, c) => s + (c.estPriceUsd ?? 0) * c.inDeck,
+    0,
+  );
 
   function handleExport() {
     const { csv } = buildMissingCsv(missingRows);
     const filename = `cardio-buylist-${safeFilename(deckName, "deck")}-${ymd(new Date())}.csv`;
     downloadBlob(csv, filename, "text/csv;charset=utf-8");
+  }
+
+  function handleNote(cardId: string, note: string) {
+    startTransition(async () => {
+      try {
+        await setWishlistNote(deckId, cardId, note);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    });
+  }
+
+  async function pushBuylist(run: () => Promise<string>) {
+    if (wlBusy) return;
+    setWlBusy(true);
+    setError(null);
+    setWlMenuOpen(false);
+    try {
+      const targetId = await run();
+      router.push(`/decks/${targetId}`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setWlBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -248,9 +298,37 @@ export function DeckEditor({
     });
   }
 
+  // Store mode fully replaces the editor with the read-only shopping view.
+  if (isWishlist && storeMode) {
+    return (
+      <WishlistStoreView
+        deckId={deckId}
+        cards={mainCards}
+        onExit={() => setStoreMode(false)}
+      />
+    );
+  }
+
   return (
     <>
-      {missingRows.length > 0 ? (
+      {isWishlist ? (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Shopping list</p>
+            <p className="text-xs text-zinc-500">
+              {mainCards.length} card{mainCards.length === 1 ? "" : "s"}
+              {wishlistTotal > 0 ? ` · ~$${wishlistTotal.toFixed(2)}` : ""}
+            </p>
+          </div>
+          <button
+            onClick={() => setStoreMode(true)}
+            disabled={mainCards.length === 0}
+            className="shrink-0 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+          >
+            Store mode →
+          </button>
+        </div>
+      ) : missingRows.length > 0 ? (
         <div className="mb-4 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -260,13 +338,55 @@ export function DeckEditor({
                 {estTotal > 0 ? ` · ~$${estTotal.toFixed(2)} TCGPlayer` : ""}
               </p>
             </div>
-            <button
-              onClick={handleExport}
-              className="shrink-0 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-            >
-              Export buylist
-            </button>
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setWlMenuOpen((v) => !v)}
+                disabled={wlBusy || !online}
+                title={online ? undefined : "Unavailable offline"}
+                className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              >
+                {wlBusy ? "Working…" : "Add to wishlist ▾"}
+              </button>
+              {wlMenuOpen ? (
+                <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-md border border-zinc-200 bg-white text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                  <button
+                    onClick={() =>
+                      pushBuylist(() => createWishlistFromDeck(deckId))
+                    }
+                    className="block w-full px-3 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  >
+                    + New wishlist
+                  </button>
+                  {wishlists.length > 0 ? (
+                    <>
+                      <div className="border-t border-zinc-200 px-3 py-1 text-xs text-zinc-500 dark:border-zinc-700">
+                        Add to existing
+                      </div>
+                      {wishlists.map((w) => (
+                        <button
+                          key={w.id}
+                          onClick={() =>
+                            pushBuylist(() =>
+                              addMissingToWishlist(deckId, w.id),
+                            )
+                          }
+                          className="block w-full truncate px-3 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        >
+                          {w.name}
+                        </button>
+                      ))}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
+          <button
+            onClick={handleExport}
+            className="mt-2 text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            Export CSV instead
+          </button>
         </div>
       ) : null}
 
@@ -436,29 +556,46 @@ export function DeckEditor({
         </ul>
       </section>
 
-      <BoardSection
-        title="Main"
-        cards={mainCards}
-        pending={pending}
-        committing={committing}
-        onAdjust={adjust}
-        onConfirm={confirm}
-        online={online}
-        bounds={deckGame === "YGO" ? YGO_BOUNDS.main : null}
-      />
-      {deckGame === "YGO" ? (
+      {isWishlist ? (
         <BoardSection
-          title="Extra"
-          cards={extraCards}
+          title="Cards"
+          cards={mainCards}
           pending={pending}
           committing={committing}
           onAdjust={adjust}
           onConfirm={confirm}
+          onNote={handleNote}
           online={online}
-          bounds={YGO_BOUNDS.extra}
-          emptyHint="Fusion / Synchro / Xyz / Link monsters land here automatically."
+          bounds={null}
+          emptyHint="Search above to add cards you want to buy."
         />
-      ) : null}
+      ) : (
+        <>
+          <BoardSection
+            title="Main"
+            cards={mainCards}
+            pending={pending}
+            committing={committing}
+            onAdjust={adjust}
+            onConfirm={confirm}
+            online={online}
+            bounds={deckGame === "YGO" ? YGO_BOUNDS.main : null}
+          />
+          {deckGame === "YGO" ? (
+            <BoardSection
+              title="Extra"
+              cards={extraCards}
+              pending={pending}
+              committing={committing}
+              onAdjust={adjust}
+              onConfirm={confirm}
+              online={online}
+              bounds={YGO_BOUNDS.extra}
+              emptyHint="Fusion / Synchro / Xyz / Link monsters land here automatically."
+            />
+          ) : null}
+        </>
+      )}
     </>
   );
 }
@@ -470,6 +607,7 @@ function BoardSection({
   committing,
   onAdjust,
   onConfirm,
+  onNote,
   online,
   bounds,
   emptyHint = "No cards yet. Use the search above to add.",
@@ -480,6 +618,8 @@ function BoardSection({
   committing: Record<string, boolean>;
   onAdjust: (externalId: string, sign: 1 | -1) => void;
   onConfirm: (externalId: string) => void;
+  /** When set, each row shows an editable note (wanted rarity / printing). */
+  onNote?: (cardId: string, note: string) => void;
   online: boolean;
   bounds: BoardBounds | null;
   emptyHint?: string;
@@ -613,6 +753,18 @@ function BoardSection({
                     </div>
                   </div>
                 </div>
+                {onNote ? (
+                  <input
+                    type="text"
+                    defaultValue={dc.note ?? ""}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== (dc.note ?? ""))
+                        onNote(dc.cardId, e.target.value);
+                    }}
+                    placeholder="Note (rarity / printing, e.g. 1st ed)"
+                    className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+                  />
+                ) : null}
               </li>
             );
           })}

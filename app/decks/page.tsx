@@ -6,7 +6,7 @@ export default async function DecksPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("decks")
-    .select("id, name, game, updated_at")
+    .select("id, name, game, is_wishlist, updated_at")
     .order("updated_at", { ascending: false });
 
   const decks = (data ?? []) as DeckListRow[];
@@ -19,13 +19,41 @@ export default async function DecksPage() {
         action={createDeck}
         className="mb-5 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
       >
-        <p className="mb-2 text-sm font-medium">New deck</p>
+        <p className="mb-2 text-sm font-medium">New</p>
+        {/* Deck vs wishlist as a segmented control (radios) — more discoverable
+            than a checkbox, and works inside the server-action form with no
+            client JS. A wishlist is still single-game, so the selector stays. */}
+        <div className="mb-2 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
+          <label className="cursor-pointer">
+            <input
+              type="radio"
+              name="type"
+              value="deck"
+              defaultChecked
+              className="peer sr-only"
+            />
+            <span className="block rounded px-3 py-1 text-xs font-medium text-zinc-700 peer-checked:bg-zinc-900 peer-checked:text-white dark:text-zinc-300 dark:peer-checked:bg-white dark:peer-checked:text-black">
+              Deck
+            </span>
+          </label>
+          <label className="cursor-pointer">
+            <input
+              type="radio"
+              name="type"
+              value="wishlist"
+              className="peer sr-only"
+            />
+            <span className="block rounded px-3 py-1 text-xs font-medium text-zinc-700 peer-checked:bg-zinc-900 peer-checked:text-white dark:text-zinc-300 dark:peer-checked:bg-white dark:peer-checked:text-black">
+              Wishlist
+            </span>
+          </label>
+        </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             name="name"
             required
             maxLength={80}
-            placeholder="Deck name"
+            placeholder="Name"
             className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
           />
           <select

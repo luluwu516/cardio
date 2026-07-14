@@ -59,14 +59,20 @@ create index if not exists user_cards_card_id_idx on public.user_cards (card_id)
 
 -- Decks (Phase 5 schema landed early to avoid migrations later).
 create table if not exists public.decks (
-  id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null references auth.users on delete cascade,
-  game       text not null check (game in ('YGO','MTG')),
-  name       text not null,
-  format     text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users on delete cascade,
+  game        text not null check (game in ('YGO','MTG')),
+  name        text not null,
+  format      text,
+  -- A wishlist is a deck used as a shopping list (buy-these cards, shown by
+  -- image/name at the store). Same table so it reuses the deck editor; the UI
+  -- suppresses deck-only rules (size bounds, banlist, main/extra split).
+  is_wishlist boolean not null default false,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
 );
+-- Bring an existing DB up to date (no-op on a fresh create above).
+alter table public.decks add column if not exists is_wishlist boolean not null default false;
 -- Decks are listed and RLS-gated by owner.
 create index if not exists decks_user_id_idx on public.decks (user_id);
 
@@ -75,8 +81,12 @@ create table if not exists public.deck_cards (
   card_id   uuid not null references public.cards on delete restrict,
   quantity  int  not null default 1 check (quantity > 0),
   board     text not null default 'main' check (board in ('main','side','extra','commander')),
+  -- Optional per-item note, chiefly for wishlists: the wanted rarity / printing
+  -- ("1st ed", "any printing", "foil") that a plain card row can't capture.
+  note      text,
   primary key (deck_id, card_id, board)
 );
+alter table public.deck_cards add column if not exists note text;
 
 -- ============================================================
 -- Grants

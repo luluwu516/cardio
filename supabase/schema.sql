@@ -11,6 +11,12 @@
 --     for the /api/health cron ping.
 --   * 2026-05-26 indexes: added decks(user_id); dropped the redundant
 --     user_cards(user_id) index (covered by the unique constraint's btree).
+--   * 2026-07-14 wishlist: added decks.is_wishlist (bool) and deck_cards.note
+--     (text) for shopping-list decks — see the `add column if not exists`
+--     lines under each table.
+--   * 2026-07-14 cards-insert-only: dropped the "auth update cards" policy and
+--     the UPDATE grant on cards, so clients can only read/insert the shared
+--     master rows (closes a card-vandalism vector).
 -- For future changes to an existing DB, see supabase/migrations/README.md.
 
 -- ============================================================

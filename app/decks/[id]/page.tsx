@@ -269,16 +269,21 @@ export default async function DeckEditorPage({
         <BackButton fallback="/decks" />
       </div>
 
-      <div className="mb-5 flex items-center gap-2">
-        <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-          {deck.game}
-        </span>
-        {deck.is_wishlist ? (
-          <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-            Wishlist
+      {/* Badges on their own row, then the name field + Save below — otherwise
+          the Wishlist badge eats the input's width and pushes Save off-screen
+          on a phone. */}
+      <div className="mb-5 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+            {deck.game}
           </span>
-        ) : null}
-        <form action={renameDeck} className="flex flex-1 items-center gap-2">
+          {deck.is_wishlist ? (
+            <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              Wishlist
+            </span>
+          ) : null}
+        </div>
+        <form action={renameDeck} className="flex items-center gap-2">
           <input type="hidden" name="id" value={deck.id} />
           <input
             name="name"
@@ -288,7 +293,7 @@ export default async function DeckEditorPage({
             placeholder="Deck name"
             className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-base font-medium outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
           />
-          <button className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
+          <button className="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
             Save
           </button>
         </form>

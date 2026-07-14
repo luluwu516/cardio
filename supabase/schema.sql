@@ -96,7 +96,10 @@ alter table public.deck_cards add column if not exists note text;
 -- denied` before RLS even runs.
 -- ============================================================
 
-grant select, insert, update on public.cards       to authenticated;
+-- cards is shared master data: authenticated users may read and insert (to
+-- cache a newly-seen card) but NOT update — otherwise any one user could
+-- overwrite a card row everyone sees. The app only ever inserts-if-missing.
+grant select, insert on public.cards       to authenticated;
 grant select, insert, update, delete on public.user_cards  to authenticated;
 grant select, insert, update, delete on public.decks       to authenticated;
 grant select, insert, update, delete on public.deck_cards  to authenticated;
@@ -126,9 +129,11 @@ drop policy if exists "auth insert cards" on public.cards;
 create policy "auth insert cards" on public.cards
   for insert with check (auth.uid() is not null);
 
+-- No update policy: `cards` is write-once shared master data from the client's
+-- side. Removing it (and any prior "auth update cards" policy) closes the
+-- card-vandalism vector — a refresh-from-authoritative-API flow, if ever
+-- wanted, would run server-side with the service role instead.
 drop policy if exists "auth update cards" on public.cards;
-create policy "auth update cards" on public.cards
-  for update using (auth.uid() is not null) with check (auth.uid() is not null);
 
 -- user_cards: owner-only access.
 drop policy if exists "own user_cards" on public.user_cards;

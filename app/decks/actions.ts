@@ -125,12 +125,20 @@ export async function changeDeckCardQuantity(
   if (!cardId) {
     if (delta < 0) return;
     const row = await fetchCardRow(game, externalId);
-    const { data: card, error } = await supabase
+    // Insert if missing — never update a shared card row (RLS forbids update).
+    const { error } = await supabase
       .from("cards")
-      .upsert(row, { onConflict: "game,external_id" })
-      .select("id")
-      .single();
+      .upsert(row, { onConflict: "game,external_id", ignoreDuplicates: true });
     if (error) throw error;
+    // Re-select the id: ignoreDuplicates returns nothing on the race where
+    // another client inserted the same new card first.
+    const { data: card, error: selError } = await supabase
+      .from("cards")
+      .select("id")
+      .eq("game", game)
+      .eq("external_id", externalId)
+      .single();
+    if (selError) throw selError;
     cardId = card.id;
     cardType = row.type;
   }

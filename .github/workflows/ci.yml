@@ -1,0 +1,36 @@
+name: CI
+
+# Gate before Vercel ships to prod: type-check, lint, and a full build must
+# pass on every push to main and on pull requests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npx next build
+        # Dummy public values so the build doesn't choke reading env at
+        # module load. No page is prerendered against a live DB (they read
+        # cookies and render dynamically), so no real connection is made.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key

@@ -171,10 +171,29 @@ export async function importCollectionBackup(
 
   const idByKey = new Map<string, string>();
   if (cardByKey.size > 0) {
+    // Insert only the cards that don't exist yet — `ignoreDuplicates` means an
+    // existing (shared) card is never overwritten with the client's payload, so
+    // one user's import can't poison another user's view of a card. Missing
+    // cards are still filled in from the backup, preserving the zero-API
+    // restore. (Refreshing a card's data stays the job of applyDelta, which
+    // upserts from the authoritative API.)
+    const { error: upsertError } = await supabase
+      .from("cards")
+      .upsert([...cardByKey.values()], {
+        onConflict: "game,external_id",
+        ignoreDuplicates: true,
+      });
+    if (upsertError) throw new Error(upsertError.message);
+
+    // Resolve ids for every card in the batch — both freshly inserted and
+    // pre-existing (ignoreDuplicates doesn't return the skipped rows). Keyed by
+    // game:external_id from the returned rows, so overlapping ids across games
+    // stay disambiguated.
+    const externalIds = [...cardByKey.values()].map((c) => c.external_id);
     const { data, error } = await supabase
       .from("cards")
-      .upsert([...cardByKey.values()], { onConflict: "game,external_id" })
-      .select("id, game, external_id");
+      .select("id, game, external_id")
+      .in("external_id", externalIds);
     if (error) throw new Error(error.message);
     for (const c of (data ?? []) as Array<{
       id: string;

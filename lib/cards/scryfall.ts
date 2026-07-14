@@ -1,5 +1,8 @@
 const BASE = "https://api.scryfall.com";
 
+// Abort upstream calls that hang so a slow Scryfall can't stall a request.
+const FETCH_TIMEOUT_MS = 8000;
+
 const headers = {
   // Scryfall asks every client to identify itself.
   "User-Agent": "cardIO/0.1 (https://github.com/luluwu516/cardio)",
@@ -128,6 +131,7 @@ export async function searchScryfall(
 
   const res = await fetch(`${BASE}/cards/search?${params}`, {
     headers,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     next: { revalidate: 60 },
   });
   if (res.status === 404) return []; // Scryfall returns 404 for no-match
@@ -138,7 +142,11 @@ export async function searchScryfall(
 
 export async function getScryfallById(id: string): Promise<ScryfallCard> {
   const url = `${BASE}/cards/${encodeURIComponent(id)}`;
-  const res = await fetch(url, { headers, next: { revalidate: 3600 } });
+  const res = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    next: { revalidate: 3600 },
+  });
   if (!res.ok) throw new Error(`Scryfall fetch ${res.status}`);
   return (await res.json()) as ScryfallCard;
 }

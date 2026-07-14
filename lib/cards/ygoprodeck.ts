@@ -1,5 +1,9 @@
 const BASE = "https://db.ygoprodeck.com/api/v7";
 
+// Abort upstream calls that hang so a slow YGOPRODeck can't stall a request
+// (the deck buylist fires one per missing card and awaits them together).
+const FETCH_TIMEOUT_MS = 8000;
+
 export interface YgoCard {
   id: number; // passcode
   name: string;
@@ -72,6 +76,7 @@ const YGO_SORT_FIELDS = new Set([
 async function fetchYgoArchetypes(): Promise<string[]> {
   try {
     const res = await fetch(`${BASE}/archetypes.php`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       next: { revalidate: 86400 },
     });
     if (!res.ok) return [];
@@ -131,6 +136,7 @@ function buildBaseYgoParams(filters: YgoSearchFilters): URLSearchParams {
 
 async function fetchYgoCards(params: URLSearchParams): Promise<YgoCard[]> {
   const res = await fetch(`${BASE}/cardinfo.php?${params}`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     next: { revalidate: 60 },
   });
   if (res.status === 400) return [];
@@ -200,7 +206,10 @@ export async function getYgoById(
   passcode: string | number,
 ): Promise<YgoCard | null> {
   const url = `${BASE}/cardinfo.php?id=${encodeURIComponent(String(passcode))}`;
-  const res = await fetch(url, { next: { revalidate: 3600 } });
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    next: { revalidate: 3600 },
+  });
   if (res.status === 400) return null;
   if (!res.ok) throw new Error(`YGOPRODeck fetch ${res.status}`);
   const data = (await res.json()) as YgoSearchResponse;

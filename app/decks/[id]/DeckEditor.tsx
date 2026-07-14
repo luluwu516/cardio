@@ -351,17 +351,21 @@ export function DeckEditor({
               <li
                 key={`${hit.game}:${key}`}
                 className={
-                  "flex items-center gap-3 rounded-lg border p-2 " +
+                  "flex flex-col gap-1 rounded-lg border p-2 " +
                   (alreadyInDeck
                     ? "border-emerald-500/40 bg-emerald-500/5 dark:border-emerald-400/40 dark:bg-emerald-400/5"
                     : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900")
                 }
               >
-                <Link
-                  href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
-                  className="flex min-w-0 flex-1 items-center gap-3"
-                >
-                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                {/* Stacked layout (matches CollectionItem): on mobile the name +
+                    detail line take the full width and the controls drop to
+                    their own line below, so long card names stay readable. */}
+                <div className="flex gap-3">
+                  <Link
+                    href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
+                    aria-label={hit.name}
+                    className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800"
+                  >
                     {hit.image_url ? (
                       <Image
                         src={hit.image_url}
@@ -371,55 +375,60 @@ export function DeckEditor({
                         className="object-cover"
                       />
                     ) : null}
+                  </Link>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <Link
+                      href={`/cards/${hit.game}/${encodeURIComponent(hit.external_id)}`}
+                      className="block min-w-0 flex-1"
+                    >
+                      <p className="truncate text-sm font-medium">{hit.name}</p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {hit.type || "—"}
+                        {hit.owned > 0 ? ` · owned ${hit.owned}` : ""}
+                        {alreadyInDeck ? (
+                          <span className="text-emerald-700 dark:text-emerald-300">
+                            {" "}
+                            · in deck {displayQty}
+                          </span>
+                        ) : null}
+                      </p>
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+                      <button
+                        onClick={() => adjust(hit.external_id, -1)}
+                        disabled={isCommitting || displayQty === 0 || !online}
+                        aria-label="Remove one from deck"
+                        className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                      >
+                        −
+                      </button>
+                      <span
+                        className={
+                          "w-6 text-center text-sm font-medium tabular-nums " +
+                          (displayQty > 0
+                            ? "text-zinc-900 dark:text-zinc-100"
+                            : "text-zinc-400")
+                        }
+                      >
+                        {displayQty}
+                      </span>
+                      <button
+                        onClick={() => adjust(hit.external_id, +1)}
+                        disabled={isCommitting || !online}
+                        aria-label="Add to deck"
+                        className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => confirm(hit.external_id)}
+                        disabled={!dirty || isCommitting || !online}
+                        className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                      >
+                        {isCommitting ? "Saving…" : "Confirm"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{hit.name}</p>
-                    <p className="truncate text-xs text-zinc-500">
-                      {hit.type || "—"}
-                      {hit.owned > 0 ? ` · owned ${hit.owned}` : ""}
-                      {alreadyInDeck ? (
-                        <span className="text-emerald-700 dark:text-emerald-300">
-                          {" "}
-                          · in deck {displayQty}
-                        </span>
-                      ) : null}
-                    </p>
-                  </div>
-                </Link>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    onClick={() => adjust(hit.external_id, -1)}
-                    disabled={isCommitting || displayQty === 0 || !online}
-                    aria-label="Remove one from deck"
-                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                  >
-                    −
-                  </button>
-                  <span
-                    className={
-                      "w-6 text-center text-sm font-medium tabular-nums " +
-                      (displayQty > 0
-                        ? "text-zinc-900 dark:text-zinc-100"
-                        : "text-zinc-400")
-                    }
-                  >
-                    {displayQty}
-                  </span>
-                  <button
-                    onClick={() => adjust(hit.external_id, +1)}
-                    disabled={isCommitting || !online}
-                    aria-label="Add to deck"
-                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                  >
-                    +
-                  </button>
-                  <button
-                    onClick={() => confirm(hit.external_id)}
-                    disabled={!dirty || isCommitting || !online}
-                    className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                  >
-                    {isCommitting ? "Saving…" : "Confirm"}
-                  </button>
                 </div>
               </li>
             );
@@ -523,17 +532,21 @@ function BoardSection({
               <li
                 key={dc.cardId}
                 className={
-                  "flex items-center gap-3 rounded-md border p-2 " +
+                  "flex flex-col gap-1 rounded-md border p-2 " +
                   (hasViolation
                     ? "border-red-500/50 bg-red-500/5"
                     : "border-zinc-200 dark:border-zinc-800")
                 }
               >
-                <Link
-                  href={`/cards/${dc.game}/${encodeURIComponent(dc.externalId)}`}
-                  className="flex min-w-0 flex-1 items-center gap-3"
-                >
-                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+                {/* Stacked layout (matches CollectionItem): name + counts take
+                    the full width on mobile; the −/+ / Confirm controls drop to
+                    their own line so long card names stay readable. */}
+                <div className="flex gap-3">
+                  <Link
+                    href={`/cards/${dc.game}/${encodeURIComponent(dc.externalId)}`}
+                    aria-label={dc.name}
+                    className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800"
+                  >
                     {dc.image_url ? (
                       <Image
                         src={dc.image_url}
@@ -543,57 +556,62 @@ function BoardSection({
                         className="object-cover"
                       />
                     ) : null}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{dc.name}</p>
-                    <p className="truncate text-xs text-zinc-500">
-                      in {dc.inDeck} · owned {dc.owned}
-                      {missing > 0 ? (
-                        <span className="text-red-600 dark:text-red-400">
-                          {" "}
-                          · need {missing}
-                        </span>
-                      ) : null}
-                    </p>
-                    {dc.violation ? (
-                      <p className="truncate text-xs font-medium text-red-600 dark:text-red-400">
-                        {dc.violation}
+                  </Link>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <Link
+                      href={`/cards/${dc.game}/${encodeURIComponent(dc.externalId)}`}
+                      className="block min-w-0 flex-1"
+                    >
+                      <p className="truncate text-sm font-medium">{dc.name}</p>
+                      <p className="truncate text-xs text-zinc-500">
+                        in {dc.inDeck} · owned {dc.owned}
+                        {missing > 0 ? (
+                          <span className="text-red-600 dark:text-red-400">
+                            {" "}
+                            · need {missing}
+                          </span>
+                        ) : null}
                       </p>
-                    ) : null}
+                      {dc.violation ? (
+                        <p className="truncate text-xs font-medium text-red-600 dark:text-red-400">
+                          {dc.violation}
+                        </p>
+                      ) : null}
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+                      <button
+                        onClick={() => onAdjust(dc.externalId, -1)}
+                        disabled={isCommitting || displayQty === 0 || !online}
+                        aria-label="Decrease"
+                        className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                      >
+                        −
+                      </button>
+                      <span
+                        className={
+                          "w-6 text-center text-sm font-medium tabular-nums " +
+                          (dirty ? "text-zinc-900 dark:text-zinc-100" : "")
+                        }
+                      >
+                        {displayQty}
+                      </span>
+                      <button
+                        onClick={() => onAdjust(dc.externalId, +1)}
+                        disabled={isCommitting || !online}
+                        aria-label="Increase"
+                        className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => onConfirm(dc.externalId)}
+                        disabled={!dirty || isCommitting || !online}
+                        className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                      >
+                        {isCommitting ? "Saving…" : "Confirm"}
+                      </button>
+                    </div>
                   </div>
-                </Link>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    onClick={() => onAdjust(dc.externalId, -1)}
-                    disabled={isCommitting || displayQty === 0 || !online}
-                    aria-label="Decrease"
-                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                  >
-                    −
-                  </button>
-                  <span
-                    className={
-                      "w-6 text-center text-sm font-medium tabular-nums " +
-                      (dirty ? "text-zinc-900 dark:text-zinc-100" : "")
-                    }
-                  >
-                    {displayQty}
-                  </span>
-                  <button
-                    onClick={() => onAdjust(dc.externalId, +1)}
-                    disabled={isCommitting || !online}
-                    aria-label="Increase"
-                    className="h-8 w-8 rounded-md border border-zinc-300 text-sm hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                  >
-                    +
-                  </button>
-                  <button
-                    onClick={() => onConfirm(dc.externalId)}
-                    disabled={!dirty || isCommitting || !online}
-                    className="ml-1 h-8 rounded-md bg-zinc-900 px-3 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                  >
-                    {isCommitting ? "Saving…" : "Confirm"}
-                  </button>
                 </div>
               </li>
             );

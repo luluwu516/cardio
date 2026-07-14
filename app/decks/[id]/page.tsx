@@ -174,28 +174,35 @@ export default async function DeckEditorPage({
   // user already has enough of: their prices don't enter the CSV. Both
   // getters use next.revalidate=3600, so repeat opens within an hour stay
   // free.
+  //
+  // Wishlists skip this entirely: almost every card is "missing" (owned 0), so
+  // a big wishlist would fan out into dozens of parallel upstream calls on a
+  // cold load — enough to be slow and to risk YGOPRODeck's rate limit. Cached
+  // `raw` prices are plenty fresh for a shopping estimate.
   const freshRawByExt = new Map<string, unknown>();
-  const missingFetches = deckCards
-    .filter((dc) => {
-      if (!dc.card) return false;
-      return dc.quantity > (ownedByCard.get(dc.card.id) ?? 0);
-    })
-    .map(async (dc) => {
-      const c = dc.card!;
-      try {
-        if (c.game === "MTG") {
-          const fresh = await getScryfallById(c.external_id);
-          return { ext: c.external_id, raw: fresh as unknown };
+  if (!deck.is_wishlist) {
+    const missingFetches = deckCards
+      .filter((dc) => {
+        if (!dc.card) return false;
+        return dc.quantity > (ownedByCard.get(dc.card.id) ?? 0);
+      })
+      .map(async (dc) => {
+        const c = dc.card!;
+        try {
+          if (c.game === "MTG") {
+            const fresh = await getScryfallById(c.external_id);
+            return { ext: c.external_id, raw: fresh as unknown };
+          }
+          const fresh = await getYgoById(c.external_id);
+          return fresh ? { ext: c.external_id, raw: fresh as unknown } : null;
+        } catch {
+          // Network / upstream hiccup → fall back to the cached raw below.
+          return null;
         }
-        const fresh = await getYgoById(c.external_id);
-        return fresh ? { ext: c.external_id, raw: fresh as unknown } : null;
-      } catch {
-        // Network / upstream hiccup → fall back to the cached raw below.
-        return null;
-      }
-    });
-  for (const r of await Promise.all(missingFetches)) {
-    if (r) freshRawByExt.set(r.ext, r.raw);
+      });
+    for (const r of await Promise.all(missingFetches)) {
+      if (r) freshRawByExt.set(r.ext, r.raw);
+    }
   }
 
   function toDisplay(dc: JoinedDeckCard): DeckCardDisplay | null {

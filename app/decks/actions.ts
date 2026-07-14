@@ -20,8 +20,29 @@ function parseGame(raw: FormDataEntryValue | null): Game | null {
   return raw === "YGO" || raw === "MTG" ? raw : null;
 }
 
+// Server-side caps so a crafted request can't bypass the client maxLength and
+// store unbounded text (the inputs are RLS-scoped to the user, so this is
+// robustness, not a cross-user risk).
+const NAME_MAX = 80;
+const NOTE_MAX = 120;
+
+// Bump a deck's updated_at so the Decks list "Updated …" and its ordering
+// reflect card/note edits, not just renames. deck_cards changes don't touch
+// the decks row on their own, so the updated_at trigger never fires for them.
+async function touchDeck(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  deckId: string,
+) {
+  await supabase
+    .from("decks")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", deckId);
+}
+
 export async function createDeck(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim();
+  const name = String(formData.get("name") ?? "")
+    .trim()
+    .slice(0, NAME_MAX);
   const game = parseGame(formData.get("game"));
   if (!name || !game) return;
   const isWishlist = formData.get("type") === "wishlist";
@@ -41,7 +62,9 @@ export async function createDeck(formData: FormData) {
 
 export async function renameDeck(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
+  const name = String(formData.get("name") ?? "")
+    .trim()
+    .slice(0, NAME_MAX);
   if (!id || !name) return;
 
   const { supabase, user } = await requireUser();
@@ -154,6 +177,7 @@ export async function changeDeckCardQuantity(
     });
   }
 
+  await touchDeck(supabase, deckId);
   revalidatePath(`/decks/${deckId}`);
 }
 
@@ -175,7 +199,7 @@ export async function setWishlistNote(
     .maybeSingle();
   if (!deck) throw new Error("Deck not found");
 
-  const trimmed = note.trim();
+  const trimmed = note.trim().slice(0, NOTE_MAX);
   const { error } = await supabase
     .from("deck_cards")
     .update({ note: trimmed || null })
@@ -183,6 +207,7 @@ export async function setWishlistNote(
     .eq("card_id", cardId);
   if (error) throw error;
 
+  await touchDeck(supabase, deckId);
   revalidatePath(`/decks/${deckId}`);
 }
 
@@ -312,6 +337,7 @@ export async function addMissingToWishlist(
     .upsert(rows, { onConflict: "deck_id,card_id,board" });
   if (error) throw error;
 
+  await touchDeck(supabase, targetWishlistId);
   revalidatePath(`/decks/${targetWishlistId}`);
   return targetWishlistId;
 }

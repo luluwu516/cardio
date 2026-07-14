@@ -82,7 +82,9 @@ export function WishlistStoreView({
   );
 
   return (
-    <div className="pb-20">
+    // Bottom padding clears both the sticky total bar and the app's tab bar so
+    // the last card is never hidden behind them.
+    <div className="pb-[calc(8rem+env(safe-area-inset-bottom))]">
       <div className="mb-3 flex items-center justify-between">
         <button
           onClick={onExit}
@@ -151,7 +153,7 @@ export function WishlistStoreView({
                       onClick={() => toggle(c.cardId)}
                       aria-pressed={got}
                       className={
-                        "rounded-md px-3 py-1.5 text-sm font-medium " +
+                        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
                         (got
                           ? "bg-emerald-600 text-white"
                           : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800")
@@ -167,8 +169,9 @@ export function WishlistStoreView({
         </ul>
       )}
 
-      {/* Sticky progress + remaining spend. */}
-      <div className="fixed inset-x-0 bottom-16 z-10 mx-auto max-w-3xl px-4">
+      {/* Sticky progress + remaining spend. Sits above the app's bottom tab bar
+          (≈ tab height + the iOS home-indicator inset) so the two never overlap. */}
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 mx-auto max-w-3xl px-4">
         <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white/95 px-4 py-2 shadow-lg backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
           <span className="text-sm font-medium">
             {doneCount}/{cards.length} bought
@@ -183,7 +186,7 @@ export function WishlistStoreView({
       {zoom ? (
         <button
           onClick={() => setZoom(null)}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4"
+          className="animate-fade-in fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4"
           aria-label="Close"
         >
           {zoom.image_url ? (

@@ -183,14 +183,12 @@ export function DeckEditor({
     downloadBlob(csv, filename, "text/csv;charset=utf-8");
   }
 
-  function handleNote(cardId: string, note: string) {
-    startTransition(async () => {
-      try {
-        await setWishlistNote(deckId, cardId, note);
-      } catch (e) {
-        setError((e as Error).message);
-      }
-    });
+  async function handleNote(cardId: string, note: string) {
+    try {
+      await setWishlistNote(deckId, cardId, note);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   async function pushBuylist(run: () => Promise<string>) {
@@ -527,7 +525,7 @@ export function DeckEditor({
                           "w-6 text-center text-sm font-medium tabular-nums " +
                           (displayQty > 0
                             ? "text-zinc-900 dark:text-zinc-100"
-                            : "text-zinc-400")
+                            : "text-zinc-500")
                         }
                       >
                         {displayQty}
@@ -619,7 +617,7 @@ function BoardSection({
   onAdjust: (externalId: string, sign: 1 | -1) => void;
   onConfirm: (externalId: string) => void;
   /** When set, each row shows an editable note (wanted rarity / printing). */
-  onNote?: (cardId: string, note: string) => void;
+  onNote?: (cardId: string, note: string) => Promise<void>;
   online: boolean;
   bounds: BoardBounds | null;
   emptyHint?: string;
@@ -754,15 +752,9 @@ function BoardSection({
                   </div>
                 </div>
                 {onNote ? (
-                  <input
-                    type="text"
-                    defaultValue={dc.note ?? ""}
-                    onBlur={(e) => {
-                      if (e.target.value.trim() !== (dc.note ?? ""))
-                        onNote(dc.cardId, e.target.value);
-                    }}
-                    placeholder="Note (rarity / printing, e.g. 1st ed)"
-                    className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+                  <NoteField
+                    initial={dc.note ?? ""}
+                    onSave={(n) => onNote(dc.cardId, n)}
                   />
                 ) : null}
               </li>
@@ -771,5 +763,52 @@ function BoardSection({
         </ul>
       )}
     </section>
+  );
+}
+
+// Wishlist per-item note. Saves on blur (only when changed) and flashes a
+// transient "Saved ✓" so the silent server write has a clear confirmation —
+// cheaper and more contextual than a global toast for this one field.
+function NoteField({
+  initial,
+  onSave,
+}: {
+  initial: string;
+  onSave: (note: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState(initial);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  async function commit() {
+    if (value.trim() === initial.trim()) return;
+    setStatus("saving");
+    await onSave(value);
+    setStatus("saved");
+    setTimeout(() => setStatus("idle"), 1500);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        placeholder="Note (rarity / printing, e.g. 1st ed)"
+        className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 pr-14 text-xs outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+      />
+      {status !== "idle" ? (
+        <span
+          className={
+            "absolute right-2 top-1/2 -translate-y-1/2 text-xs " +
+            (status === "saved"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-zinc-500")
+          }
+        >
+          {status === "saving" ? "Saving…" : "Saved ✓"}
+        </span>
+      ) : null}
+    </div>
   );
 }

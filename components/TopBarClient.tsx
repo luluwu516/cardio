@@ -13,7 +13,7 @@ export function TopBarClient({ name }: { name: string }) {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-black/95">
+    <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur dark:border-zinc-800 dark:bg-black/95">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-end gap-3 px-4 py-2">
         <span className="min-w-0 truncate text-xs text-zinc-600 dark:text-zinc-400">
           Hello,{" "}

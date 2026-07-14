@@ -167,6 +167,7 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
 
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
 
   // Reset to page 1 whenever the filter/sort signature changes. Uses the
   // React-recommended "adjust state during render" pattern (see "Storing
@@ -361,6 +362,7 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
     if (backupBusy) return;
     setBackupBusy(true);
     setBackupError(null);
+    setBackupMsg(null);
     try {
       const csv = await exportCollectionBackup();
       downloadBlob(
@@ -368,6 +370,9 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
         `cardio-backup-${ymd(new Date())}.csv`,
         "text/csv;charset=utf-8",
       );
+      // A download is near-invisible on mobile (it lands in Files), so confirm.
+      setBackupMsg("Backup downloaded ✓");
+      setTimeout(() => setBackupMsg(null), 4000);
     } catch (e) {
       setBackupError((e as Error).message);
     } finally {
@@ -399,13 +404,9 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
         onExport={exportCsv}
         onBackup={backup}
         backupBusy={backupBusy}
+        backupError={backupError}
+        backupMsg={backupMsg}
       />
-
-      {backupError ? (
-        <p className="mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-          Backup failed: {backupError}
-        </p>
-      ) : null}
 
       {showAdvanced ? (
         <div className="mb-3">

@@ -161,7 +161,7 @@ export function VariantPicker({
                       "w-7 text-center text-sm font-medium tabular-nums " +
                       (display > 0
                         ? "text-zinc-900 dark:text-zinc-100"
-                        : "text-zinc-400")
+                        : "text-zinc-500")
                     }
                   >
                     {display}

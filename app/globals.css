@@ -25,3 +25,34 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Visible keyboard-focus ring for interactive controls that otherwise only
+   style :hover. Scoped to links/buttons — inputs keep their own border-based
+   focus (they set outline-none deliberately), so this avoids a doubled ring. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid #71717a; /* zinc-500, ≥3:1 on both themes */
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Fade-in for the fullscreen card zoom — an overlay that pops in instantly
+   reads as a flash; a short fade gives it spatial continuity. Respect
+   reduced-motion. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}

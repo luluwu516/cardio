@@ -32,7 +32,7 @@ export default async function DecksPage() {
               defaultChecked
               className="peer sr-only"
             />
-            <span className="block rounded px-3 py-1 text-xs font-medium text-zinc-700 peer-checked:bg-zinc-900 peer-checked:text-white dark:text-zinc-300 dark:peer-checked:bg-white dark:peer-checked:text-black">
+            <span className="block rounded px-3 py-1 text-xs font-medium text-zinc-700 peer-checked:bg-zinc-900 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-zinc-500 peer-focus-visible:ring-offset-1 dark:text-zinc-300 dark:peer-checked:bg-white dark:peer-checked:text-black">
               Deck
             </span>
           </label>
@@ -43,7 +43,7 @@ export default async function DecksPage() {
               value="wishlist"
               className="peer sr-only"
             />
-            <span className="block rounded px-3 py-1 text-xs font-medium text-zinc-700 peer-checked:bg-zinc-900 peer-checked:text-white dark:text-zinc-300 dark:peer-checked:bg-white dark:peer-checked:text-black">
+            <span className="block rounded px-3 py-1 text-xs font-medium text-zinc-700 peer-checked:bg-zinc-900 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-zinc-500 peer-focus-visible:ring-offset-1 dark:text-zinc-300 dark:peer-checked:bg-white dark:peer-checked:text-black">
               Wishlist
             </span>
           </label>

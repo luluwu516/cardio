@@ -29,6 +29,8 @@ interface Props {
   onExport: (g: Game) => void;
   onBackup: () => void;
   backupBusy: boolean;
+  backupError: string | null;
+  backupMsg: string | null;
 }
 
 // Top of the collection page: game tabs + CSV export, then the name search
@@ -45,6 +47,8 @@ export function CollectionToolbar({
   onExport,
   onBackup,
   backupBusy,
+  backupError,
+  backupMsg,
 }: Props) {
   const { query, gameFilter, showAdvanced, sortKey, sortDir } = state;
   // Export CSV is built client-side from data already on the page, so it stays
@@ -91,6 +95,17 @@ export function CollectionToolbar({
           </button>
         </div>
       </div>
+
+      {/* Backup feedback sits directly under the button that triggers it. */}
+      {backupError ? (
+        <p className="text-right text-xs text-red-700 dark:text-red-300">
+          Backup failed: {backupError}
+        </p>
+      ) : backupMsg ? (
+        <p className="text-right text-xs text-emerald-700 dark:text-emerald-300">
+          {backupMsg}
+        </p>
+      ) : null}
       <SearchInput
         value={query}
         onChange={(v) => patch({ query: v })}

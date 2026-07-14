@@ -15,6 +15,13 @@ export function SearchInput({ value, onChange, className, ...rest }: Props) {
   return (
     <div className={"relative " + (className ?? "")}>
       <input
+        // Card names ("Exodia", "Blue-Eyes") shouldn't be auto-capitalised or
+        // "corrected" on mobile; enterKeyHint makes the on-screen return key
+        // read "Search". Placed before {...rest} so callers can still override.
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint="search"
         {...rest}
         value={value}
         onChange={(e) => onChange(e.target.value)}

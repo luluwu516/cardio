@@ -17,6 +17,9 @@
 --   * 2026-07-14 cards-insert-only: dropped the "auth update cards" policy and
 --     the UPDATE grant on cards, so clients can only read/insert the shared
 --     master rows (closes a card-vandalism vector).
+--   * 2026-07-14 drop-acquisition: removed the never-wired user_cards
+--     acquired_at, acquired_price_usd and notes columns. The wishlist note
+--     stays on deck_cards.note and is never copied into the collection.
 -- For future changes to an existing DB, see supabase/migrations/README.md.
 
 -- ============================================================
@@ -50,12 +53,15 @@ create table if not exists public.user_cards (
   card_id            uuid not null references public.cards on delete restrict,
   variant            text not null,
   quantity           int  not null default 1 check (quantity > 0),
-  acquired_at        date,
-  acquired_price_usd numeric(10,2),
-  notes              text,
   created_at         timestamptz not null default now(),
   unique (user_id, card_id, variant)
 );
+-- Drop the columns we never wired up (no-op if already gone / on a fresh create
+-- above): acquisition tracking, and the owned-card note. The wishlist note
+-- lives on deck_cards.note and is never copied into the collection.
+alter table public.user_cards drop column if exists acquired_at;
+alter table public.user_cards drop column if exists acquired_price_usd;
+alter table public.user_cards drop column if exists notes;
 -- No standalone (user_id) index: the unique (user_id, card_id, variant)
 -- constraint is backed by a btree whose leftmost column is user_id, so it
 -- already serves user_id-prefix lookups.

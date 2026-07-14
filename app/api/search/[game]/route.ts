@@ -156,6 +156,17 @@ export async function GET(
     );
   }
 
+  // Require a session: this route proxies the external card APIs, so leaving it
+  // open would be an unauthenticated proxy anyone could script to burn our
+  // compute / trip upstream rate limits.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
 

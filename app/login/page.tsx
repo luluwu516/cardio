@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { login, signup, signInWithGoogle } from "./actions";
+import { login, signInWithGoogle } from "./actions";
 
 type SearchParams = Promise<{ error?: string; message?: string }>;
 
@@ -67,18 +67,12 @@ export default async function LoginPage({
               className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
             />
           </div>
-          <div className="flex gap-2 pt-1">
+          <div className="pt-1">
             <button
               formAction={login}
-              className="flex-1 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
             >
               Sign in
-            </button>
-            <button
-              formAction={signup}
-              className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
-              Sign up
             </button>
           </div>
         </form>

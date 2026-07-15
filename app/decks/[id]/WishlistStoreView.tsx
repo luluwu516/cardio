@@ -133,11 +133,9 @@ export function WishlistStoreView({
                   <p className="text-base font-semibold leading-tight">
                     {c.name}
                   </p>
-                  {c.note ? (
-                    <p className="mt-0.5 text-sm text-amber-700 dark:text-amber-300">
-                      {c.note}
-                    </p>
-                  ) : null}
+                  {/* The note stays private (it can hold price-comparison memos
+                      like "shop X is pricier") — never shown in Store mode,
+                      which is held up to the clerk. */}
                   <p className="mt-0.5 text-xs text-zinc-500">
                     {c.estPriceUsd !== null
                       ? `~$${(c.estPriceUsd * c.inDeck).toFixed(2)}`
@@ -200,9 +198,6 @@ export function WishlistStoreView({
           <p className="mt-3 text-center text-lg font-semibold text-white">
             {zoom.name} · ×{zoom.inDeck}
           </p>
-          {zoom.note ? (
-            <p className="text-sm text-amber-300">{zoom.note}</p>
-          ) : null}
         </button>
       ) : null}
     </div>

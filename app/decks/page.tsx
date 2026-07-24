@@ -2,7 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createDeck } from "./actions";
 import { DecksList, type DeckListRow } from "./DecksList";
 
-export default async function DecksPage() {
+export default async function DecksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("decks")
@@ -10,6 +14,9 @@ export default async function DecksPage() {
     .order("updated_at", { ascending: false });
 
   const decks = (data ?? []) as DeckListRow[];
+  // Either a failed list read or a create-deck action that redirected here.
+  const { error: actionError } = await searchParams;
+  const errorMsg = error?.message ?? actionError ?? null;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
@@ -70,9 +77,9 @@ export default async function DecksPage() {
         </div>
       </form>
 
-      {error ? (
+      {errorMsg ? (
         <p className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
-          {error.message}
+          {errorMsg}
         </p>
       ) : null}
 

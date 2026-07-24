@@ -130,10 +130,13 @@ function extractPriceInfo(
 
 export default async function DeckEditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { id } = await params;
+  const { error: renameError } = await searchParams;
   const supabase = await createClient();
 
   // Round-trip 1: just the deck row — everything else fans out from its id/game.
@@ -311,6 +314,11 @@ export default async function DeckEditorPage({
             Save
           </button>
         </form>
+        {renameError ? (
+          <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            {renameError}
+          </p>
+        ) : null}
       </div>
 
       <DeckEditor

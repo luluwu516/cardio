@@ -54,7 +54,13 @@ export async function createDeck(formData: FormData) {
     .insert({ user_id: user.id, name, game, is_wishlist: isWishlist })
     .select("id")
     .single();
-  if (error) throw error;
+  // Fail back to /decks with an inline message rather than throwing into the
+  // full-page error boundary — a form submit shouldn't nuke the page.
+  if (error || !data) {
+    redirect(
+      `/decks?error=${encodeURIComponent(error?.message ?? "Couldn't create deck")}`,
+    );
+  }
 
   revalidatePath("/decks");
   redirect(`/decks/${data.id}`);
@@ -73,7 +79,10 @@ export async function renameDeck(formData: FormData) {
     .update({ name })
     .eq("id", id)
     .eq("user_id", user.id);
-  if (error) throw error;
+  // Back to the deck with an inline message instead of the error boundary.
+  if (error) {
+    redirect(`/decks/${id}?error=${encodeURIComponent(error.message)}`);
+  }
 
   revalidatePath("/decks");
   revalidatePath(`/decks/${id}`);

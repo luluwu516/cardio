@@ -20,6 +20,9 @@
 --   * 2026-07-14 drop-acquisition: removed the never-wired user_cards
 --     acquired_at, acquired_price_usd and notes columns. The wishlist note
 --     stays on deck_cards.note and is never copied into the collection.
+--   * 2026-07-24 derived-columns: added cards.set_name/race/level/colors,
+--     derived from `raw` at insert time, so the /collection loader stops
+--     fetching the multi-KB `raw` blob per row. Includes a one-time backfill.
 -- For future changes to an existing DB, see supabase/migrations/README.md.
 
 -- ============================================================
@@ -38,11 +41,42 @@ create table if not exists public.cards (
   image_url     text,
   mana_cost     text,                          -- MTG only
   attribute     text,                          -- YGO only
+  -- Derived-from-`raw` columns the collection list needs for sort/filter.
+  -- Persisted at insert time (see lib/cards/upsert.ts) so /collection never
+  -- has to fetch or parse the multi-KB `raw` blob per row — it's the app's
+  -- landing page and the heaviest query, so this keeps it cheap at scale.
+  set_name      text,                          -- YGO: first printing; MTG: set_name
+  race          text,                          -- YGO only (Warrior, Spellcaster, …)
+  level         int,                            -- YGO only (0–12)
+  colors        text[],                         -- MTG only (subset of W/U/B/R/G)
   raw           jsonb,                         -- full API payload, for forward compat
   fetched_at    timestamptz not null default now(),
   unique (game, external_id)
 );
 create index if not exists cards_game_name_idx on public.cards (game, name);
+-- Bring an existing DB up to date (no-op on a fresh create above).
+alter table public.cards add column if not exists set_name text;
+alter table public.cards add column if not exists race     text;
+alter table public.cards add column if not exists level    int;
+alter table public.cards add column if not exists colors   text[];
+-- One-time backfill of the derived columns from `raw`. Idempotent (recomputes
+-- from the source-of-truth blob), so it's safe to re-run — it just rewrites the
+-- four columns for every row. Mirrors the JS extraction in lib/cards/rawFields.ts.
+update public.cards set
+  set_name = case game
+    when 'MTG' then coalesce(raw->>'set_name', raw->>'set')
+    when 'YGO' then raw->'card_sets'->0->>'set_name'
+  end,
+  race = case when game = 'YGO' then raw->>'race' end,
+  level = case
+    when game = 'YGO' and jsonb_typeof(raw->'level') = 'number'
+      then (raw->>'level')::int
+  end,
+  colors = case
+    when game = 'MTG' and jsonb_typeof(raw->'colors') = 'array'
+      then array(select jsonb_array_elements_text(raw->'colors'))
+  end
+where raw is not null;
 
 -- Per-user ownership.
 -- `variant` is the user's rarity (YGO: "Common", "Secret Rare", …) or finish

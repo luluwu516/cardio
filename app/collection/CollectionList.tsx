@@ -380,8 +380,18 @@ export function CollectionList({ rows }: { rows: CollectionRow[] }) {
     }
   }
 
-  const ygoCount = rows.filter((r) => r.card?.game === "YGO").length;
-  const mtgCount = rows.filter((r) => r.card?.game === "MTG").length;
+  // One pass instead of two full scans per keystroke — these recompute on every
+  // render, and at a few thousand rows the double .filter().length was the kind
+  // of work that shows up as input lag on a phone.
+  const { ygoCount, mtgCount } = useMemo(() => {
+    let ygo = 0;
+    let mtg = 0;
+    for (const r of rows) {
+      if (r.card?.game === "YGO") ygo += 1;
+      else if (r.card?.game === "MTG") mtg += 1;
+    }
+    return { ygoCount: ygo, mtgCount: mtg };
+  }, [rows]);
   const advancedActive = !!(
     typeFilter ||
     keywordFilter ||

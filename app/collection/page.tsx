@@ -2,12 +2,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
-import {
-  pickMtgColors,
-  pickSetName,
-  pickYgoLevel,
-  pickYgoRace,
-} from "@/lib/cards/rawFields";
 import { applyAlias } from "@/lib/cards/aliases";
 import { CollectionHeading } from "./CollectionHeading";
 import { CollectionList } from "./CollectionList";
@@ -27,7 +21,10 @@ interface RawJoin {
     image_url: string | null;
     description: string | null;
     attribute: string | null;
-    raw: unknown;
+    set_name: string | null;
+    race: string | null;
+    level: number | null;
+    colors: string[] | null;
   } | null;
 }
 
@@ -37,8 +34,12 @@ interface RawJoin {
 // so missing rows just disappear from search results. Loop in 1000-row chunks,
 // ordered by `id` so each window is disjoint and stable.
 const FETCH_CHUNK = 1000;
+// Select the derived columns (set_name/race/level/colors), NOT `raw` — this is
+// the landing-page query, and pulling the multi-KB `raw` blob per row was the
+// single heaviest cost here. Those columns are filled at insert time from the
+// same rawFields helpers (see lib/cards/upsert.ts + schema.sql backfill).
 const SELECT_COLS =
-  "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, description, attribute, raw)";
+  "id, quantity, variant, created_at, card:cards(id, game, external_id, name, type, image_url, description, attribute, set_name, race, level, colors)";
 
 export default async function CollectionPage() {
   const supabase = await createClient();
@@ -78,12 +79,12 @@ export default async function CollectionPage() {
             name: applyAlias(r.card.game, r.card.external_id, r.card.name),
             type: r.card.type,
             image_url: r.card.image_url,
-            set: pickSetName(r.card.game, r.card.raw),
+            set: r.card.set_name,
             description: r.card.description,
             attribute: r.card.attribute,
-            race: r.card.game === "YGO" ? pickYgoRace(r.card.raw) : null,
-            level: r.card.game === "YGO" ? pickYgoLevel(r.card.raw) : null,
-            colors: r.card.game === "MTG" ? pickMtgColors(r.card.raw) : [],
+            race: r.card.race,
+            level: r.card.level,
+            colors: r.card.colors ?? [],
           }
         : null,
     }))

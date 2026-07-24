@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { csvEscape } from "@/lib/csv";
+import {
+  pickMtgColors,
+  pickSetName,
+  pickYgoLevel,
+  pickYgoRace,
+} from "@/lib/cards/rawFields";
 import type { Game } from "@/lib/cards/types";
 
 async function requireUser() {
@@ -148,6 +154,10 @@ export async function importCollectionBackup(
       image_url: string | null;
       mana_cost: string | null;
       attribute: string | null;
+      set_name: string | null;
+      race: string | null;
+      level: number | null;
+      colors: string[] | null;
       raw: unknown;
     }
   >();
@@ -155,6 +165,7 @@ export async function importCollectionBackup(
     if ((r.game !== "YGO" && r.game !== "MTG") || !r.external_id) continue;
     const key = `${r.game}:${r.external_id}`;
     if (cardByKey.has(key)) continue;
+    const raw = r.raw ?? null;
     cardByKey.set(key, {
       game: r.game,
       external_id: r.external_id,
@@ -165,7 +176,13 @@ export async function importCollectionBackup(
       image_url: r.image_url,
       mana_cost: r.mana_cost,
       attribute: r.attribute,
-      raw: r.raw ?? null,
+      // Derive the same columns the insert path fills (schema.sql keeps them
+      // in sync via its backfill) so imported cards sort/filter correctly.
+      set_name: pickSetName(r.game, raw),
+      race: r.game === "YGO" ? pickYgoRace(raw) : null,
+      level: r.game === "YGO" ? pickYgoLevel(raw) : null,
+      colors: r.game === "MTG" ? pickMtgColors(raw) : null,
+      raw,
     });
   }
 

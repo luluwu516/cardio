@@ -8,6 +8,12 @@ import {
   type ScryfallCard,
 } from "./scryfall";
 import { getYgoById, ygoImage, type YgoCard } from "./ygoprodeck";
+import {
+  pickMtgColors,
+  pickSetName,
+  pickYgoLevel,
+  pickYgoRace,
+} from "./rawFields";
 import type { Game } from "./types";
 
 export interface CardRow {
@@ -20,6 +26,13 @@ export interface CardRow {
   image_url: string | null;
   mana_cost: string | null;
   attribute: string | null;
+  // Derived-from-raw columns, persisted so /collection can sort/filter without
+  // fetching the raw blob. Kept in lockstep with the SQL backfill in schema.sql
+  // by deriving through the same rawFields helpers.
+  set_name: string | null;
+  race: string | null;
+  level: number | null;
+  colors: string[] | null;
   raw: ScryfallCard | YgoCard;
 }
 
@@ -34,6 +47,10 @@ export function mtgRow(c: ScryfallCard): CardRow {
     image_url: scryfallImage(c),
     mana_cost: c.mana_cost ?? null,
     attribute: null,
+    set_name: pickSetName("MTG", c),
+    race: null,
+    level: null,
+    colors: pickMtgColors(c),
     raw: c,
   };
 }
@@ -49,6 +66,10 @@ export function ygoRow(c: YgoCard): CardRow {
     image_url: ygoImage(c),
     mana_cost: null,
     attribute: c.attribute ?? null,
+    set_name: pickSetName("YGO", c),
+    race: pickYgoRace(c),
+    level: pickYgoLevel(c),
+    colors: null,
     raw: c,
   };
 }

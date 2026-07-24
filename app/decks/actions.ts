@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { fetchCardRow } from "@/lib/cards/upsert";
+import { boardForCard, computeMissingCards } from "@/lib/cards/deck";
 import type { Game } from "@/lib/cards/types";
 
 async function requireUser() {
@@ -86,13 +87,6 @@ export async function renameDeck(formData: FormData) {
 
   revalidatePath("/decks");
   revalidatePath(`/decks/${id}`);
-}
-
-// YGO Extra Deck home: Fusion / Synchro / Xyz / Link monsters (incl.
-// Pendulum and Tuner variants — substring match against the type line).
-function boardForCard(game: Game, type: string | null): "main" | "extra" {
-  if (game !== "YGO" || !type) return "main";
-  return /fusion|synchro|xyz|link\s+monster/i.test(type) ? "extra" : "main";
 }
 
 /**
@@ -251,22 +245,11 @@ async function missingCardsOf(
     .select("card_id, quantity")
     .eq("user_id", userId)
     .in("card_id", cardIds);
-  const ownedByCard = new Map<string, number>();
-  for (const o of (owned ?? []) as Array<{ card_id: string; quantity: number }>) {
-    ownedByCard.set(o.card_id, (ownedByCard.get(o.card_id) ?? 0) + o.quantity);
-  }
 
-  // Collapse any main/extra split to one needed-count per card.
-  const neededByCard = new Map<string, number>();
-  for (const r of rows) {
-    neededByCard.set(r.card_id, (neededByCard.get(r.card_id) ?? 0) + r.quantity);
-  }
-  const out: Array<{ card_id: string; needed: number }> = [];
-  for (const [card_id, inDeck] of neededByCard) {
-    const needed = inDeck - (ownedByCard.get(card_id) ?? 0);
-    if (needed > 0) out.push({ card_id, needed });
-  }
-  return out;
+  return computeMissingCards(
+    rows,
+    (owned ?? []) as Array<{ card_id: string; quantity: number }>,
+  );
 }
 
 // Create a fresh wishlist from a deck's missing cards and return its id so the

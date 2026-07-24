@@ -1,297 +1,275 @@
 # cardIO
 
-A personal YGO / MTG card collection web app (PWA in the future) — multi-user, with deck building and buylist export.
+<p align="center">
+  <img src="public/icon.png" alt="CardIO logo" width="120" />
+</p>
 
+> Track your Yu-Gi-Oh! and Magic: The Gathering collection down to the rarity, build decks against what you already own, and walk into a card shop with a buylist you can hand to the clerk. Installs as a PWA and reads offline.
 
-## Overview
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/React-19-149eca?logo=react" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript" alt="TypeScript 5" />
+  <img src="https://img.shields.io/badge/Supabase-Postgres%20%2B%20RLS-3ecf8e?logo=supabase" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss" alt="Tailwind 4" />
+  <img src="https://img.shields.io/badge/PWA-offline--first-5a0fc8" alt="PWA" />
+  <img src="https://img.shields.io/badge/CI-GitHub%20Actions-2088ff?logo=githubactions" alt="CI" />
+</p>
 
-**cardIO** is a personal collection-management system for Yu-Gi-Oh! and Magic: The Gathering players. It could look up cards through the [Scryfall](https://scryfall.com) and [YGOPRODeck](https://ygoprodeck.com) APIs, and add them to your collection in one click. The collection reflects multiple variants per card (YGO rarities, MTG nonfoil/foil/etched). The deck builder **searches your collection first**, then falls back to external search for the rest, and exports the "missing cards" as a CSV with TCGPlayer search links and live price estimates — take it straight to a store or shop online.
+![Demo Screenshots](./img/cardio-demo.png)
 
-The whole app is deployed on Vercel + Supabase. One codebase, mobile and desktop browsers.
+<p align="center">
+  <a href="#key-features">Features</a> ·
+  <a href="#tech-stack--architecture">Architecture</a> ·
+  <a href="#getting-started">Getting Started</a> ·
+  <a href="#technical-challenges--solutions">Technical Deep-Dive</a> ·
+  <a href="#testing--code-quality">Testing</a>
+</p>
 
-## Motivation
+---
 
-Most card tools sit at one of two extremes: encyclopedic lookup or deck-sharing communities (Scryfall / YGOPRODeck). The middle ground — *my* inventory and how it relates to *my* deck ideas — is empty. I decided to build a collection-management system for my cards.
-It has to be an encyclopedia, an inventory, and a deck builder all at once. The user can access it on a desktop and also on a mobile device. And here is the **cardIO**.
+## What I learned
 
+My Yu-Gi-Oh! collection crossed 3,000 cards at some point, a few Magic: The Gathering — FINAL FANTASY cards mixed in. Playable, but with a familiar friction: even sorted by type, confirming whether I owned one specific card meant fifteen minutes of flipping through binders. More than once I bought a card I "didn't have," got home, and found three already sitting there. Now I owned six. That annoyance became my first Claude Code project.
 
-## Features
+Designing it with Claude, I met tools I'd never touched: the public card APIs, Vercel for free hosting, Supabase for the database. Once the features and schema were mapped, the packages installed and the TypeScript and SQL scaffolding came together in under an hour. My personal website, hand-built, had eaten a whole summer. Here, describing what I wanted produced a working foundation in minutes, which left me more room to work on how the app should feel to use.
 
-### 🔐 Auth & Multi-user
-- Google OAuth + email/password
-- Supabase Auth + Row Level Security: every user reads/writes only their own `user_cards` and `decks`
+The lesson that stuck came from a feature I deleted. Early on I added OCR camera scanning to read a card from a photo, curious how far the agent could take something I'd never built. It worked, and it impressed me, though getting Tesseract to read Yu-Gi-Oh!'s stylized fonts took patient tuning. Then I used it. Open the app, open the scanner, take the photo, pull the name, search: slower than typing, since the API already did fuzzy text search. So I cut it. A product is the handful of features that earn their place in the workflow, not every impressive thing you can build.
 
-### 🔍 Card Search
-- Dual game: YGO (YGOPRODeck `cardinfo.php`) + MTG (Scryfall `cards/search`)
-- **Advanced search and sort**: Type / Attribute / Race / Level / Set / Keyword / ATK / DEF for YGO, and Type / Set / Keyword / Colors / Mana Value / Power / Toughness for MTG
-- **Special-character handling**: typing "Evil Twin" finds the `Evil★Twin` archetype via a parallel archetype-name lookup
-- **Full-art split**: Scryfall `unique=art` so different artworks of the same card show up as separate results
+A few other problems showed up the way they do once something is live:
 
-### 📦 Collection Management
-- Every row has `+ / − / Remove` controls for direct quantity adjustment
-- **Variant axis**: a single `variant` column unifies YGO rarities (Common, Secret Rare, …) and MTG finishes (Nonfoil, Foil, Etched)
-- Same card with different variants = different inventory rows; same `card_id` aggregates into a total-owned count
-- **CSV export**: separate YGO / MTG files, dated filenames (`cardio-ygo-collection-20260512.csv`)
+- **Special characters broke search.** Cards like Dark Infant @Ignister, Evil★Twin, and the I:P series never surfaced. Type "IP" instead of "I:P" and nothing came back, because the API's fuzzy endpoint matches literal substrings. On mobile that stings, where a special character means switching keyboards mid-search. Claude's fix matches the query against Yu-Gi-Oh!'s archetype names with both sides reduced to letters and digits, then runs a second archetype search and merges the results. I wouldn't have reached for that alone.
+- **Vercel re-optimized images that arrived optimized.** The card APIs serve CDN-sized art, and Vercel resized it again for mobile, work with no payoff. Turning image optimization off in `next.config.ts` settled it.
+- **CI/CD stopped being a LinkedIn phrase.** Vercel handled deployment on its own, so I wired up the other half: a check that catches broken code before a user does.
 
-### 🃏 Deck Builder
-- **Collection-first search**: defaults to "From collection"; one click to fall back to "All cards"
-- **3-stage display**: every search result shows `− N +` instead of just `+`; cards already in the deck get an emerald border and a "· in deck N" tag in the subtitle
-- **Automatic board routing**: YGO Fusion / Synchro / Xyz / Link monsters land in the Extra Deck automatically
-- **Live legality checks**:
-  - YGO: fetches the daily TCG banlist (`banlist=tcg`); Forbidden / Limited / Semi-Limited rows get a red border
-- **Missing-card buylist CSV**: walks the deck, computes `needed = max(0, inDeck − owned)`, **refetches prices live** from Scryfall / YGOPRODeck (the cached payload could be months stale), and exports a buylist with TCGPlayer search URLs, per-card estimates, subtotals, and a grand total
+Because the app scratches a real itch, I keep sanding down whatever friction I hit while using it. It centers on Yu-Gi-Oh! today, with Magic support aimed at collection tracking and casual deck drafts. If I get more serious about constructed Magic, that side grows next.
 
-### ☁️ Deployment & Operations
-- **Vercel auto-deploy** on `git push`
-- **Vercel Cron**: a daily 12:00 UTC ping to `/api/health` keeps the Supabase free-tier project from auto-pausing after 7 days
-- **`/api/health` is Bearer-protected**: requires `Authorization: Bearer ${CRON_SECRET}` so the endpoint isn't publicly callable
+Building with an agent doesn't train the same muscle as writing every line by hand, and I didn't stack raw coding reps the way the slow path would have. What it did was fold months of the experience you'd get from an internship, or years of self-teaching, into one project. I was sketching the next build before this one shipped, curious what I'll trip over, and learn, the time after.
 
-## User Guide
+### A note on the name and logo
 
-### First-time setup
+The project was still only an idea when I went out with a friend who's a vet. He mentioned he'd once wanted to specialize in cardiology, and it clicked: *cardio* starts with *card*. Card Input/Output, cardIO. Input and output is taking data in and sending it back, which is what a card database does all day, and to a collector the cards you keep matter about as much as a heart. The name was perfect.
 
-1. Open [cardio-delta.vercel.app](https://cardio-ph97zgsy0-lulu-wu-s-projects.vercel.app/login)
-2. Click **"Continue with Google"** (or sign up with email + password)
+The logo came next. An anatomical heart felt too busy, and a Valentine heart too corny. A medical paper on his wall had an ECG trace running across it. I went home, opened Figma, and drew the lines. Here is the remarkable logo. It's the part of this AI-built project I'm proudest of.
 
-![login](./img/login.png)
+---
 
-3. First sign-in creates the account and redirects to `/search`
-4. The top-right corner will show **"Hello, \<your account name>"**
+## Why it exists
 
-![start](./img/start.png)
+Scryfall and YGOPRODeck tell you everything about a card. Deck-sharing sites show you what other players built. Neither one knows what sits in your binder.
 
-### Adding your first card
+cardIO tracks your inventory by card and rarity, then builds decks against it. When a deck calls for cards you don't own, you get a priced shopping list ready for the counter.
 
-1. On `/search`, pick the `YGO` or `MTG` tab
-2. Type a card name (≥ 2 characters) and press Search or Enter
+---
 
-![search](./img/search.png)
+## Key Features
 
-3. Click a result to open the detail page
+- 🔍 **Unified dual-game search.** One interface over two unrelated upstream APIs: YGOPRODeck for Yu-Gi-Oh!, Scryfall for Magic. Per-game filters cover attribute, race, level and ATK/DEF on one side, color, mana value, power and toughness on the other. An authenticated route handler proxies both.
+- 📦 **Variant-aware inventory.** A single `variant` column spans YGO rarities and MTG finishes (Nonfoil, Foil, Etched). One printing in two rarities occupies two rows that still sum into one owned count.
+- 🃏 **Collection-first deck builder.** Search your own cards before the wider catalog. YGO Fusion, Synchro, Xyz and Link monsters route themselves to the Extra Deck. The builder checks TCG banlist legality and computes `in-deck − owned` with TCGPlayer price estimates.
+- 🛒 **Wishlist Store Mode.** A read-only view built for the shop counter: large art, tap to go fullscreen, oversized quantities, a check-off list that leaves the wishlist intact, and a running spend total. A Screen Wake Lock keeps the screen up while you shop, and your private price notes stay hidden here.
+- 📴 **Offline collection.** A hand-written service worker serves your collection with no network. Filtering, sorting and paging keep working, because they run in the browser over the rows the page already shipped.
+- 💾 **Zero-API backup and restore.** Export the whole collection, raw API payloads included, into one self-contained CSV. Restoring it touches no external API. An RFC-4180 parser handles the JSON sitting inside those cells.
+- 🔐 **Invite-only auth.** Supabase Auth (Google OAuth, email and password) with Row-Level Security isolating each user inside the database.
+- 🧹 **Data-quality layer.** A normalizer repairs the junk rarities YGOPRODeck returns. A local alias table surfaces cards under their official English name while the upstream source lags behind.
 
-![info](./img/info.png)
+---
 
-4. Press **Add**, pick a variant (YGO rarity / MTG finish), press **Confirm**
+## Tech Stack & Architecture
 
-![In collection](./img/InCollection.png)
+| Layer | Technology |
+| --- | --- |
+| **Framework** | Next.js 16 (App Router · React Server Components · Server Actions) |
+| **Language** | TypeScript 5 (strict), React 19 |
+| **Styling** | Tailwind CSS 4 |
+| **Backend** | Supabase: Postgres, Auth, Row-Level Security, cookie sessions via `@supabase/ssr` |
+| **Data sources** | YGOPRODeck API (YGO) · Scryfall API (MTG) |
+| **PWA / Offline** | Web App Manifest + custom service worker (network-first RSC caching) |
+| **Testing** | Vitest 4 |
+| **Quality gate** | ESLint 9 · `tsc --noEmit` · GitHub Actions CI |
+| **Infra** | Vercel (hosting + Cron) · Supabase (managed Postgres) |
 
-### Advanced search
+### System design
 
-Expand the **"Advanced search"** panel for:
+Pages render as React Server Components that query Postgres through the signed-in user's session, so Postgres enforces authorization through RLS rather than the client. Mutations go through Server Actions. The only endpoints a browser calls are Route Handlers proxying the card APIs, and auth gates those, so the open internet cannot burn through a third-party rate limit.
 
-- **YGO**: Type (28-option dropdown) / Attribute (7) / Race (text) / Set / Keyword / Level (0–12) / ATK / DEF
-- **MTG**: Type (8) / Set / Keyword / Colors (WUBRG with C mutually exclusive) / Mana Value / Power / Toughness
+```mermaid
+flowchart TD
+    subgraph Client["Client - installable PWA"]
+        UI["React 19 UI<br/>(client components)"]
+        SW["Service Worker<br/>(offline read shell)"]
+    end
 
-Modify any field, then press **Apply** to run the search or **Reset** to clear everything.
-
-![Advanced search](./img/AdvancedSearch.png)
-
-### Managing your collection
-
-On `/collection`:
-
-![Collection](./img/Collection.png)
-
-1. Game tabs at the top toggle YGO / MTG
-2. **Export YGO CSV** / **Export MTG CSV** in the top-right does full-collection dumps
-
-![Inventory](./img/inventory.png)
-
-3. The search box plus the **Advanced search** panel below (Type, Keyword, Variant, plus game-specific fields)
-
-![Collection Search](./img/CollectionSearch.png)
-
-4. **Sort by** dropdown offers 8 sort combinations
-5. The card list paginates at 20/page; Prev / Next scroll back to the top
-
-### Building decks
-
-On `/decks`:
-1. Use the top form to create a new deck (Name + Game)
-
-![Deck](./img/Deck.png)
-
-2. Click into a deck to open the editor
-3. The left-side search defaults to **From collection**; click into **All cards** when nothing matches
-
-![Add From Collection](./img/AddFromCollection.png)
-
-4. `+` / `−` adjusts deck quantity; search results sync with `− N +` in real time
-5. The "Missing from collection" panel at the top shows total missing + an estimated TCGPlayer total
-6. Click **Export buylist** to download the missing-card CSV (with prices refetched at export time)
-
-![Buylist](./img/buylist.png)
-
-### On mobile
-
-Just open it in Safari / Chrome. The UI is mobile-first by default. PWA install support is on the roadmap.
-
-## Tech Stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| Framework | **Next.js 16.2.6** (App Router + Turbopack) | RSC + Server Actions + middleware (`proxy.ts`) in one place |
-| UI | **React 19** + **Tailwind CSS 4** | No UI library bloat; keep styling weight minimal |
-| Language | **TypeScript 5** | Strict mode; treat every lint warning as an error |
-| Auth + DB | **Supabase** (`@supabase/ssr` 0.10.x) | Auth + Postgres + RLS in one platform |
-| Hosting | **Vercel** | Edge deploys, Cron Jobs, preview environments |
-| External APIs | **Scryfall** (MTG) / **YGOPRODeck** (YGO) | Both free, no API key required; Scryfall's symbology CDN handles mana icons |
-| Client state | **React useState + URL params** | No Redux/Zustand; state needs live within a single component |
-
-### What this project deliberately doesn't use
-
-- **No React Query / SWR** — Server Components handle server-side fetching. Client `fetch` is only used for `/api/search`, with `AbortController` for cancellation. That's enough.
-- **No UI library (shadcn / Radix)** — Tailwind directly, to avoid pulling in the 80% of components I'd never use.
-- **No OCR / camera scan** — was on the original roadmap with Tesseract.js. Manual search turned out faster in practice, so **it got cut**.
-
-## Design Decisions (Why, not just What)
-
-> This section captures the *reasoning* behind structural choices.
-> Code answers "what"; this section answers "why".
-
-### Splitting `cards` and `user_cards`
-
-**Originally**: a single `collections` table that mixed card data with "who owns it."
-**The problem**: in a multi-user system, the same card data gets stored N times (once per owner). Updates fan out, storage bloats, and data goes stale unevenly.
-**The decision**:
-- `cards`: shared master data, anon-readable, holds `image_url` + the full `raw` jsonb payload
-- `user_cards`: each row = "user X owns N copies of card Y in some variant," RLS-protected
-- Unique constraint on `(user_id, card_id, variant)` prevents duplicate rows
-
-### One `variant` column, two games
-
-**Originally**: `user_cards` had `condition` (NM/LP/MP/…) and `foil` (boolean).
-**The problem**: YGO players don't need `foil`. MTG players don't need `condition`. Each game was carrying a dead column for the other.
-**The decision**: a single `variant text` column
-- YGO: `"Common"`, `"Secret Rare"`, `"Ultra Rare"`, … (extracted from YGOPRODeck `card_sets[].set_rarity`)
-- MTG: `"Nonfoil"`, `"Foil"`, `"Etched"` (from Scryfall `finishes`)
-- Different variants = different rows, which naturally models "I have one Foil and two Nonfoils of this card"
-
-### Middleware (`proxy.ts`) does three jobs
-
-1. **Session refresh** — calling `getUser()` on every request lets Supabase rotate the auth token before it expires
-2. **Auth gate** — anyone without a session gets bounced to `/login`, except for explicit public paths (`/auth/*`, `/api/*`)
-3. **Display-name injection** — after the validated `getUser`, the user's display name is written onto a forwarded request header (`x-cardio-user-name`) so the TopBar reads it from `headers()` **instead of making a second `getUser` call**
-
-The subtle bit: `fwdHeaders.delete(USER_NAME_HEADER)` runs *before* the header is set, so a malicious client can't forge their own display name by sending the header inbound.
-
-### `/api/health` isn't just "ping me"
-
-**Why it exists**: Supabase free-tier projects auto-pause after 7 days of inactivity. For a personal project with light traffic, that's easy to trip.
-**How it works**:
-- `vercel.json` schedules a daily 12:00 UTC hit on `/api/health`
-- The endpoint does a minimal `select id from cards limit 1`
-- It **requires `Authorization: Bearer ${CRON_SECRET}`** — otherwise anyone with the URL could hammer it
-- The `cards` table has an explicit `GRANT SELECT TO anon` because Postgres checks table-level grants *before* RLS — without that grant, even the read-everything RLS policy gets blocked
-
-### Buylist prices must be refetched live
-
-**The problem**: `cards.raw` is frozen at the first cache write. Prices in that payload could be months — even years — stale. For a "buylist CSV" whose entire point is current prices, that's a silent failure.
-**The fix**: when `/decks/[id]` renders, it parallel-refetches Scryfall / YGOPRODeck payloads **only for cards where `inDeck > owned`** (the ones that actually land in the CSV). Fully-owned cards don't trigger a refetch. Next's data cache (`revalidate: 3600`) absorbs repeat opens within an hour.
-
-### `/search` uses draft+commit, `/collection` uses live filter — on purpose
-
-**`/search`**: every commit hits Scryfall / YGOPRODeck (~150ms + politeness delay). Live-filtering on every keystroke would hammer the upstream APIs and feel laggy, so the form has a draft state and an explicit **Apply** button.
-**`/collection`**: filtering is client-side substring matching against rows already in memory — **cheaper than the input's own onChange**. An Apply button would add friction for no gain.
-**Takeaway**: the surface structure (Advanced toggle + Reset button) looks similar, but the commit model is fundamentally different. The UX divergence is intentional.
-
-### 14 `useState`s → 1 `CollectionState`
-
-**Originally**: `query`, `gameFilter`, `showAdvanced`, `typeFilter`, `keywordFilter`, `variantFilter`, `attributeFilter`, `raceFilter`, `levelFilter`, `colorsFilter`, `sortKey`, `sortDir`, `page`, `prevFilterSig` — fourteen independent `useState` hooks.
-**The pain**: `changeGame` needed to reset eight of them in sequence. `filterSig` (used to reset page on filter change) was a pipe-delimited string that could collide (`{kw:"a|b"}` and `{kw:"a", race:"b"}` serialized the same).
-**The refactor**:
-```ts
-const [state, setState] = useState<CollectionState>(() => ({…}));
-function patch(p: Partial<CollectionState>) {
-  setState((prev) => ({ ...prev, ...p }));
-}
-```
-plus `filterSig = JSON.stringify({…})` to make collisions impossible. Adding a new filter became a one-place change.
-
-### "Adjust state during render" instead of `useEffect(() => setPage(1), [...])`
-
-The `react-hooks/set-state-in-effect` lint rule (correctly) flags synchronous setState calls inside effect bodies. The proper pattern, from React's "Storing information from previous renders" docs:
-
-```ts
-const filterSig = JSON.stringify({…});
-const [prevSig, setPrevSig] = useState(filterSig);
-if (prevSig !== filterSig) {
-  setPrevSig(filterSig);
-  patch({ page: 1 });
-}
+    subgraph Edge["Vercel - Next.js 16 App Router"]
+        MW["proxy.ts middleware<br/>(session refresh)"]
+        RSC["Server Components<br/>(read via user session)"]
+        SA["Server Actions<br/>(mutations)"]
+        RH["Route Handlers<br/>/api/search - /api/health"]
+    end
+
+    subgraph Data["Supabase - Postgres"]
+        DB["Tables + Row-Level Security"]
+        AUTH["Auth (OAuth / email)"]
+    end
+
+    EXT["YGOPRODeck - Scryfall"]
+    CRON["Vercel Cron"]
+
+    UI -->|navigations & actions| MW
+    SW -.->|cache-first / network-first| UI
+    MW --> RSC & SA & RH
+    RSC -->|RLS-scoped reads| DB
+    SA -->|RLS-scoped writes| DB
+    RH -->|proxied lookups| EXT
+    RH --> DB
+    AUTH --- DB
+    CRON -->|authenticated ping| RH
 ```
 
-React immediately re-renders with the new state — no effect overhead, no cascading-renders warning.
+**Module interplay**
 
-### MTG Type dropdown groups by primary type
+- **`proxy.ts`**, Next 16's middleware convention, refreshes the Supabase session cookie on each request, so Server Components downstream skip a second auth round-trip.
+- **Server Components** query Postgres straight. RLS policies (`auth.uid() = user_id`, plus a deck-ownership join) confine a user to their own rows.
+- **Route Handlers** hold the only outbound calls to external APIs, behind auth, with fetch timeouts and response caching.
+- **Vercel Cron** pings an authenticated `/api/health` once a day so the free-tier Postgres stays awake.
 
-**The pain**: Scryfall's `type_line` looks like `"Legendary Creature — Human Wizard"`. Deduping those into a dropdown gives a Commander collection 100+ entries.
-**The fix**: `mtgPrimaryType(typeLine)` walks a priority-ordered list (`Creature, Land, Instant, Sorcery, Enchantment, Artifact, Planeswalker, Battle, Tribal`) and returns the first match. `"Artifact Creature — Golem"` → `"Creature"`, because that's how players think of it.
+---
 
-### Component split: CollectionList → Toolbar / AdvancedPanel / Item
+## Getting Started
 
-**Before**: a single 570-line file with ~350 lines of JSX in one component.
-**After**: `CollectionList` (411 lines, pure orchestrator) + `CollectionToolbar` (116) + `AdvancedPanel` (202) + `CollectionItem` (82) + `types.ts` (53).
-**The trade-off**: total line count went up (864 vs 570), but each file has a focused responsibility. Editing the advanced panel no longer means scrolling through 570 lines of unrelated state management.
+### Prerequisites
 
-### `lib/cards/rawFields.ts` as the single source of truth
+| Requirement | Version |
+| --- | --- |
+| Node.js | ≥ 22 |
+| npm | ≥ 10 |
+| Supabase project | any (free tier works) |
 
-`pickSetName`, `pickSetInfo`, `pickYgoRace`, `pickYgoLevel`, `pickMtgColors`, `mtgPrimaryType` — small helpers that pluck specific fields out of the cached `cards.raw` jsonb. Previously scattered across `collection/page.tsx` and `cards/[game]/[externalId]/page.tsx` as near-duplicates with subtly different type guards. Now centralized — when a new consumer arrives, it imports from one place and the behavior matches by construction.
-
-## Local Development
+### 1. Clone & install
 
 ```bash
-# 1. Clone
 git clone https://github.com/luluwu516/cardio.git
 cd cardio
-
-# 2. Install
 npm install
+```
 
-# 3. Set up environment variables
-cp .env.local.example .env.local
-# Fill in your Supabase URL and anon key
+### 2. Configure environment
 
-# 4. Run schema migrations (in Supabase Dashboard → SQL Editor)
-# Apply supabase/schema.sql and supabase/migrations/*.sql
+Create `.env.local` in the project root:
 
-# 5. Develop
-npm run dev
-# → http://localhost:3000
+```bash
+# Supabase: Project Settings > API (safe to expose, RLS enforces access)
+NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
 
-# 6. Pre-deploy checks
-npm run lint
-npx tsc --noEmit
-npm run build
+# Server-only secret shared with Vercel Cron for the keep-alive ping
+CRON_SECRET=<any-long-random-string>
+```
+
+> This project ships no `service_role` key. Every query runs under the signed-in
+> user's RLS-scoped session, so a leaked anon key grants nothing that user lacks.
+
+### 3. Provision the database
+
+Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase **SQL Editor**. It holds the whole schema (tables, indexes, grants, RLS policies and the `updated_at` trigger), stays idempotent, and survives a re-run.
+
+### 4. Lock it down (invite-only)
+
+Under **Authentication → Providers**, disable open sign-ups, then add users through **Authentication → Users**.
+
+### 5. Run
+
+```bash
+npm run dev     # http://localhost:3000
 ```
 
 ---
 
-## Project Health
+## Technical Challenges & Solutions
 
-After every significant change the project runs a self health check:
-- `tsc --noEmit` with zero errors
-- `npm run lint` with zero warnings
-- `npm run build` passes cleanly
-- Scan for cross-file code duplication
-- Schema ↔ app-code consistency (columns, policies, indexes)
-- Security review (RLS coverage, env-var leakage)
+### 1. An offline read shell on the App Router
 
-Issues that past health checks have surfaced and fixed:
-- Scryfall "Relevance" sort silently overridden by a default `order=name`, making the UI option unreachable
-- Deck buylist using months-old prices from `cards.raw` (now refetched live)
-- `/api/health` callable without the cron secret
-- TopBar and middleware each calling `getUser()` (now passed via header)
-- 14 fragmented `useState`s in CollectionList (consolidated)
-- MTG `type_line` exploding the Type dropdown into 50+ entries (collapsed to primary types)
+**The problem.** I wanted the collection browsable with no signal, since card shops eat phone reception. A cache-every-page service worker breaks on the App Router: client navigations skip HTML and fetch React Server Component payloads from the same URL, carrying a per-build `?_rsc=<hash>` query string. Key the cache on the full URL and every offline navigation misses.
+
+**Diagnosis.** Watching the network panel during one client navigation showed two request shapes for a single route: a document request with `mode: "navigate"`, and an RSC request carrying an `RSC: 1` header plus a `_rsc` hash that rotates on each deploy. Cache hits landed on the exact document URL and nowhere else, so RSC requests missed the moment the network dropped.
+
+**Solution.** I wrote the worker by hand instead of pulling in Workbox or Serwist, which both want a webpack config this Turbopack build doesn't have. It branches on request shape:
+
+- Hashed build assets under `/_next/static/` are immutable, so they go cache-first.
+- Document and RSC requests (`mode === "navigate"`, or an `RSC` header or `_rsc` param) go network-first, falling back to a cache match with `ignoreSearch: true`, which lets a cached page answer despite the rotating hash.
+- `/api/*`, `/auth/*` and every non-GET request pass through untouched, so writes and live search fail offline instead of returning stale data.
+
+**Result.** The collection page already ships every owned row and filters, sorts and pages in the browser, so caching that one response covers the entire offline experience, search included. The worker registers in production alone, since dev Turbopack rotates asset hashes that a cache would keep serving stale. Logging out clears the cache, which holds authenticated HTML.
+
+### 2. Data integrity and concurrency on a shared table
+
+**The problem.** Every user reads the same `cards` rows. A pre-release pass over the RLS policies turned up an `UPDATE` policy open to any authenticated user, so one account, or one stolen session, could rewrite a card name or image for everybody. Two smaller risks sat behind it: two clients caching the same new card could race, and a CSV restore could overwrite shared rows with one user's backup payload.
+
+**Diagnosis.** I traced each write to the table with `grep` for `.from("cards")` and sorted them into inserts and updates. Nothing depended on updating an existing card. Each path looked the row up first and wrote only when it was missing, which left the `ON CONFLICT DO UPDATE` branch reachable through a millisecond race that rewrote near-identical data.
+
+**Solution.** I now treat `cards` as write-once from the client side.
+
+1. RLS grants read and insert. Dropping the `UPDATE` policy and grant closed the vandalism path. A refresh-from-source flow, should I build one, runs server-side with elevated privileges.
+2. Card caching became insert-if-missing (`ON CONFLICT DO NOTHING`) followed by a `SELECT` on `(game, external_id)` to resolve the id, which holds up when two clients insert the same card at once.
+3. The restore path passes `ignoreDuplicates`, so one user's backup cannot overwrite another user's view of a card while still filling in rows the database lacks. The zero-API restore survives.
+
+**Result.** Concurrent writes and untrusted backup payloads both behave, verified against the policies themselves.
+
+### 3. Card names you can't type
+
+**The problem.** Yu-Gi-Oh! prints characters into card names that no keyboard offers up: the star in `Evil★Twin`, the at-sign in `Dark Infant @Ignister`, the colon in `I:P Masquerena`. YGOPRODeck's fuzzy-name endpoint (`fname`) matches on literal substrings, so a player who types "Evil Twin" or "Ignister" gets an empty result for the cards they mean.
+
+**Diagnosis.** Searching "Evil Twin" against `fname` returned nothing, while those cards sat in the database under the archetype "Evil★Twin". The misses shared one cause: punctuation the official name carries and the typed query drops.
+
+**Solution.** Alongside the `fname` request, and on the same round-trip, I check whether the query maps onto a Yu-Gi-Oh! archetype. Normalizing both sides down to `[a-z0-9]` collapses `Evil★Twin` and "Evil Twin" onto one key, `eviltwin`. A hit fires a second `cardinfo.php` call with `archetype=<match>`, and I merge the two result sets, dedupe by passcode, and list the `fname` matches first. The archetype list comes from a single `/archetypes.php` call cached for a day. Two guards hold it in check: a four-character floor keeps "dark" from dragging in the whole Dark Magician archetype, and after an exact match I accept an archetype that prefixes the query, so "Evil Twin Lil-la" still resolves.
+
+**Result.** The archetype lookup runs in parallel with the main search, so it adds no latency when it fires and none when it doesn't. Players reach `@Ignister`, `Evil★Twin` and `I:P` cards with plain letters.
+
+### Additional engineering notes
+
+- PostgREST caps a read at 1000 rows and drops the remainder without complaint. The collection and backup loaders walk the table in 1000-row windows ordered by `id`, so a large collection loses nothing.
+- Opening a wishlist used to fan out into dozens of parallel price lookups, since almost every card on one counts as unowned. Wishlists read cached payloads now and stay under YGOPRODeck's rate limit.
+- Returning from a card detail page restores the exact result set, because the filter and sort state mirrors into the URL through `replaceState` rather than a debounced router push.
+- Every outbound fetch carries an 8-second `AbortSignal.timeout`, so one hung upstream cannot stall a render.
 
 ---
 
-## Credits
+## Testing & Code Quality
 
-- **Card data**: [Scryfall](https://scryfall.com) (MTG) · [YGOPRODeck](https://ygoprodeck.com) (YGO)
-- **Mana symbols**: [Scryfall symbology CDN](https://svgs.scryfall.io)
-- **Hosting**: [Vercel](https://vercel.com)
-- **Database + Auth**: [Supabase](https://supabase.com)
+**Strategy.** Vitest covers the pure logic where a regression corrupts data without raising an error:
 
-Built with care by [@luluwu516](https://github.com/luluwu516).
+- CSV round-trip, `parseCsv` against `csvEscape`, across commas, escaped quotes, newlines and embedded JSON. This one guards backup and restore.
+- The YGO rarity normalizer: junk denylist, casing and spacing, unknown values kept, dedupe, hierarchy order.
+- The alias resolver: official-name mapping and game scoping.
+
+```bash
+npm test          # Vitest, 23 unit tests
+npm run lint      # ESLint 9
+npx tsc --noEmit  # strict type-check
+npm run build     # production build
+```
+
+**CI.** A [GitHub Actions workflow](.github/workflows/ci.yml) runs type-check, lint, test and build on every push and pull request to `main`, gating the branch before Vercel ships. I kept the scope at pure-function unit tests and skipped E2E, which a project this size would spend more time maintaining than debugging.
+
+**Conventions.** Strict TypeScript. An RLS-first security model with no `service_role` key. One `schema.sql` as the source of truth, carrying a dated change log. Keyboard focus rings, contrast-checked text and iOS safe-area handling throughout the UI.
+
+---
+
+## Project Structure
+
+```
+app/
+├── api/            # Route Handlers: authed search proxy + cron health check
+├── cards/          # Card detail + variant picker
+├── collection/     # Inventory: list, toolbar, CSV backup/restore
+├── decks/          # Deck builder, buylist, wishlist "Store Mode"
+├── search/         # Dual-game search with advanced filters
+└── login/          # Auth (OAuth + email)
+components/          # Shared UI (nav, offline banner, service-worker registrar)
+lib/
+├── cards/          # API clients, variant/rarity logic, aliases, upsert helpers
+├── supabase/       # SSR client + session middleware
+└── csv.ts          # RFC-4180 parser + export helpers
+public/sw.js        # Offline-shell service worker
+supabase/schema.sql # Single source of truth: tables, RLS, grants, triggers
+```

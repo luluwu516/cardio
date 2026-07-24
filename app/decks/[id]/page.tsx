@@ -323,7 +323,6 @@ export default async function DeckEditorPage({
 
       <DeckEditor
         deckId={deck.id}
-        deckName={deck.name}
         deckGame={deck.game}
         isWishlist={deck.is_wishlist}
         wishlists={wishlists}

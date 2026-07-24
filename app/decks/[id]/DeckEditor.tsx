@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import type { Game, SearchHit } from "@/lib/cards/types";
-import { csvEscape, downloadBlob, safeFilename, ymd } from "@/lib/csv";
 import { SearchInput } from "@/components/SearchInput";
 import { useOnlineStatus } from "@/lib/useOnlineStatus";
 import {
@@ -58,39 +57,8 @@ interface MissingRow {
   tcgplayerUrl: string | null;
 }
 
-function buildMissingCsv(rows: MissingRow[]): { csv: string; total: number } {
-  const header = [
-    "game",
-    "card_name",
-    "quantity_needed",
-    "tcgplayer_url",
-    "est_price_usd",
-    "est_subtotal_usd",
-  ].join(",");
-  const lines: string[] = [header];
-  let total = 0;
-  for (const r of rows) {
-    const subtotal =
-      r.estPriceUsd !== null ? r.estPriceUsd * r.needed : null;
-    if (subtotal !== null) total += subtotal;
-    lines.push(
-      [
-        r.game,
-        csvEscape(r.name),
-        r.needed,
-        csvEscape(r.tcgplayerUrl ?? ""),
-        r.estPriceUsd !== null ? r.estPriceUsd.toFixed(2) : "",
-        subtotal !== null ? subtotal.toFixed(2) : "",
-      ].join(","),
-    );
-  }
-  lines.push(["", "TOTAL", "", "", "", total.toFixed(2)].join(","));
-  return { csv: lines.join("\n"), total };
-}
-
 export function DeckEditor({
   deckId,
-  deckName,
   deckGame,
   isWishlist,
   wishlists,
@@ -98,7 +66,6 @@ export function DeckEditor({
   extraCards,
 }: {
   deckId: string;
-  deckName: string;
   deckGame: Game;
   isWishlist: boolean;
   wishlists: Array<{ id: string; name: string }>;
@@ -180,12 +147,6 @@ export function DeckEditor({
     (s, c) => s + (c.estPriceUsd ?? 0) * c.inDeck,
     0,
   );
-
-  function handleExport() {
-    const { csv } = buildMissingCsv(missingRows);
-    const filename = `cardio-buylist-${safeFilename(deckName, "deck")}-${ymd(new Date())}.csv`;
-    downloadBlob(csv, filename, "text/csv;charset=utf-8");
-  }
 
   async function handleNote(cardId: string, note: string) {
     try {
@@ -383,12 +344,6 @@ export function DeckEditor({
               ) : null}
             </div>
           </div>
-          <button
-            onClick={handleExport}
-            className="mt-2 text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
-          >
-            Export CSV instead
-          </button>
         </div>
       ) : null}
 

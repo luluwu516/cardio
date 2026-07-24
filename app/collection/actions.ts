@@ -271,15 +271,24 @@ export async function changeQuantity(id: string, delta: number) {
     .select("id, quantity")
     .eq("id", id)
     .eq("user_id", user.id)
-    .single();
-  if (error || !row) return;
+    .maybeSingle();
+  // Surface failures instead of silently no-oping. CollectionItem clears its
+  // pending delta optimistically before calling this, so a quiet `return`
+  // makes the change vanish from the screen with no explanation. Throwing lets
+  // the client restore the delta and show the message.
+  if (error) throw new Error(error.message);
+  if (!row) throw new Error("This card is no longer in your collection.");
 
   const next = row.quantity + delta;
-  if (next <= 0) {
-    await supabase.from("user_cards").delete().eq("id", id);
-  } else {
-    await supabase.from("user_cards").update({ quantity: next }).eq("id", id);
-  }
+  const { error: writeError } =
+    next <= 0
+      ? await supabase.from("user_cards").delete().eq("id", id)
+      : await supabase
+          .from("user_cards")
+          .update({ quantity: next })
+          .eq("id", id);
+  if (writeError) throw new Error(writeError.message);
+
   revalidatePath("/collection");
   revalidatePath("/cards", "layout");
 }

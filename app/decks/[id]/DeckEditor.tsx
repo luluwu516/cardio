@@ -23,6 +23,10 @@ export interface DeckCardDisplay {
   game: Game;
   name: string;
   type: string | null;
+  /** Set/printing the card comes from — shown in Store mode so the user can
+   *  tell the clerk which set to pull. MTG: the specific printing; YGO: the
+   *  card's first listed set. Null when the payload carries no set info. */
+  setName: string | null;
   image_url: string | null;
   inDeck: number;
   owned: number;
@@ -794,7 +798,7 @@ function NoteField({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={commit}
-        placeholder="Note (rarity / printing, e.g. 1st ed)"
+        placeholder="Note"
         className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 pr-14 text-xs outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
       />
       {status !== "idle" ? (

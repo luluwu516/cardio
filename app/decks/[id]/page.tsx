@@ -93,6 +93,19 @@ function parsePrice(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// The set/printing to show a shop clerk in Store mode. MTG cards are cached
+// per printing, so set_name is a single exact value. YGO cards list every
+// printing in card_sets — take the first (the original set) since any valid
+// set lets the clerk find the card on the shelf.
+function extractSetName(game: Game, raw: unknown): string | null {
+  if (game === "MTG") {
+    const r = raw as { set_name?: string } | null;
+    return r?.set_name ?? null;
+  }
+  const r = raw as { card_sets?: Array<{ set_name?: string }> } | null;
+  return r?.card_sets?.[0]?.set_name ?? null;
+}
+
 function extractPriceInfo(
   game: Game,
   name: string,
@@ -224,6 +237,7 @@ export default async function DeckEditorPage({
       game: c.game,
       name: displayName,
       type: c.type,
+      setName: extractSetName(c.game, rawForPrice),
       image_url: c.image_url,
       inDeck: dc.quantity,
       owned: ownedByCard.get(c.id) ?? 0,

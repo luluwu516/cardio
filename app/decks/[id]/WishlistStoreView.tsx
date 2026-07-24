@@ -133,6 +133,13 @@ export function WishlistStoreView({
                   <p className="text-base font-semibold leading-tight">
                     {c.name}
                   </p>
+                  {/* Set/printing so the user can tell the clerk exactly which
+                      version to pull off the shelf. */}
+                  {c.setName ? (
+                    <p className="mt-0.5 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      {c.setName}
+                    </p>
+                  ) : null}
                   {/* The note stays private (it can hold price-comparison memos
                       like "shop X is pricier") — never shown in Store mode,
                       which is held up to the clerk. */}

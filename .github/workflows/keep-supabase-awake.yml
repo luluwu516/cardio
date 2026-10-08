@@ -22,10 +22,24 @@ on:
   # Lets you trigger it by hand from the Actions tab (e.g. right after un-pausing).
   workflow_dispatch:
 
+# Needed by the keepalive step below to re-enable this workflow via the API.
+permissions:
+  actions: write
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      # GitHub auto-disables scheduled workflows after 60 days with no repo
+      # commits — which silently killed this job once and let the project get
+      # flagged for pausing. Re-enabling the (already enabled) workflow resets
+      # that inactivity timer, so the schedule keeps itself alive.
+      - name: Reset GitHub's 60-day inactivity timer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/keep-supabase-awake.yml/enable"
+
+
       - name: Read one row from cards (anon)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
